@@ -54,6 +54,22 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:12px 2
 .my-name span{color:var(--accent2);font-weight:600}
 .leave-btn{padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
 .leave-btn:hover{border-color:var(--danger);color:var(--danger);background:rgba(255,92,92,.07)}
+
+/* ── UPCOMING EVENTS ── */
+.upcoming-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.upcoming-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.15s}
+.upcoming-card:hover{border-color:var(--muted)}
+.upcoming-card-top{padding:16px 18px 14px;border-bottom:1px solid var(--border)}
+.upcoming-card-sport{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.upcoming-card-name{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em;line-height:1.1;margin-bottom:4px}
+.upcoming-card-venue{font-size:12px;color:var(--muted)}
+.upcoming-card-bottom{padding:12px 18px;display:flex;align-items:center;justify-content:space-between}
+.upcoming-card-dates{font-size:13px;font-weight:500}
+.upcoming-countdown{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.04em}
+.upcoming-status-live{background:rgba(60,232,154,.12);color:var(--success);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.upcoming-status-soon{background:rgba(232,255,60,.1);color:var(--accent);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.upcoming-status-upcoming{background:var(--surface2);color:var(--muted);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.upcoming-bar{height:3px;width:100%}
 main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 
 /* ── CARDS ── */
@@ -290,6 +306,9 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
     </div>
 
     <div id="lobby-error" style="display:none;color:var(--danger);font-size:13px;text-align:center;margin-top:12px"></div>
+
+    <div class="divider">or browse without joining</div>
+    <button class="btn btn-ghost" onclick="enterViewOnly()" style="width:100%">👁 View Scores &amp; Results</button>
   </div>
 </div>
 
@@ -306,9 +325,11 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
       <button class="nav-tab" onclick="gotoTab('scoring')">Scoring</button>
       <button class="nav-tab" onclick="gotoTab('scoreboard')">Scoreboard</button>
       <button class="nav-tab" onclick="gotoTab('alltime')">All Time</button>
+      <button class="nav-tab" onclick="gotoTab('upcoming')">Upcoming</button>
     </div>
     <div class="nav-right">
-      <div class="my-name">Playing as <span id="nav-myname">—</span></div>
+      <div class="my-name" id="nav-myname-wrap">Playing as <span id="nav-myname">—</span></div>
+      <div class="my-name" id="nav-viewonly-badge" style="display:none"><span style="background:rgba(60,232,255,.12);color:var(--accent2);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">👁 View Only</span></div>
       <button class="leave-btn" onclick="leaveRoom()" title="Return to main menu">← Main Menu</button>
     </div>
   </nav>
@@ -464,6 +485,15 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
         </div>
         <div id="atr-list"></div>
       </div>
+    </div>
+
+    <!-- UPCOMING EVENTS TAB -->
+    <div id="tab-upcoming" style="display:none">
+      <div class="sec-hdr" style="margin-bottom:20px">
+        <div class="sec-title">Upcoming Events</div>
+        <span class="badge">2026 Season</span>
+      </div>
+      <div id="upcoming-grid" class="upcoming-grid"></div>
     </div>
 
   </main>
@@ -624,29 +654,31 @@ function loadSession(){
 function clearSession(){ localStorage.removeItem('drafthub_session'); }
 
 function leaveRoom(){
-  const msg = ME.isHost
+  const msg = isViewOnly
+    ? 'Return to the main menu?'
+    : ME.isHost
     ? 'Leave this room? You can rejoin with the room code. The draft will stay active for others.'
     : 'Leave this room and return to the main menu?';
   if(!confirm(msg)) return;
-  // Detach Firebase listener so we stop receiving updates
-  db.ref('rooms/'+ME.roomCode).off();
+  if(ME.roomCode) db.ref('rooms/'+ME.roomCode).off();
   clearSession();
-  // Reset local state
   ME = { name:'', roomCode:'', isHost:false };
   ROOM = {};
-  // Hide app, show lobby fresh
+  isViewOnly = false;
   document.getElementById('app').style.display='none';
   document.getElementById('lobby').style.display='flex';
-  // Clear lobby inputs so it feels fresh
   document.getElementById('lobby-name').value='';
   document.getElementById('lobby-draft-name').value='';
   document.getElementById('lobby-code').value='';
   document.getElementById('lobby-error').style.display='none';
-  // Reset host-only elements for next session
+  // Restore nav visibility
+  document.querySelectorAll('.nav-tab').forEach((el,i)=>{ el.style.display=''; });
   document.querySelectorAll('.host-only').forEach(el=>el.style.display='none');
   document.getElementById('setup-readonly').style.display='none';
   document.getElementById('waiting-room-section').style.display='none';
-  // Reset nav tabs to setup
+  document.getElementById('nav-code').parentElement.style.display='';
+  document.getElementById('nav-myname-wrap').style.display='';
+  document.getElementById('nav-viewonly-badge').style.display='none';
   document.querySelectorAll('.nav-tab').forEach((el,i)=>el.classList.toggle('active',i===0));
   TAB_ORDER.forEach(x=>{
     const el=document.getElementById('tab-'+x);
@@ -1200,7 +1232,7 @@ function renderScoreboard(){
 // ══════════════════════════════════════════════════════
 // TAB ROUTING + PREV/NEXT NAV
 // ══════════════════════════════════════════════════════
-const TAB_ORDER = ['setup','draft','scoring','scoreboard','alltime'];
+const TAB_ORDER = ['setup','draft','scoring','scoreboard','alltime','upcoming'];
 let currentTab = 'setup';
 
 function gotoTab(t){
@@ -1216,6 +1248,7 @@ function gotoTab(t){
   if(t==='scoring') renderScoringTab();
   if(t==='scoreboard') triggerRefresh();
   if(t==='alltime') renderAllTime();
+  if(t==='upcoming') renderUpcoming();
   renderPageNav();
 }
 
@@ -1229,7 +1262,7 @@ function renderPageNav(){
     const idx=TAB_ORDER.indexOf(t);
     const prevT=idx>0?TAB_ORDER[idx-1]:null;
     const nextT=idx<TAB_ORDER.length-1?TAB_ORDER[idx+1]:null;
-    const tabLabels={setup:'Setup',draft:'Draft',scoring:'Scoring',scoreboard:'Scoreboard',alltime:'All Time'};
+    const tabLabels={setup:'Setup',draft:'Draft',scoring:'Scoring',scoreboard:'Scoreboard',alltime:'All Time',upcoming:'Upcoming'};
     pn.innerHTML=`
       <button class="page-nav-btn" ${!prevT?'disabled':''} onclick="gotoTab('${prevT||''}')">← ${prevT?tabLabels[prevT]:''}</button>
       <span class="page-nav-center">${tabLabels[t]}</span>
@@ -1682,6 +1715,187 @@ async function renderHardcodedDrafts() {
       </div>
     </div>`;
   renderMastersStandings();
+}
+
+// ══════════════════════════════════════════════════════
+// VIEW ONLY MODE
+// ══════════════════════════════════════════════════════
+let isViewOnly = false;
+
+function enterViewOnly() {
+  isViewOnly = true;
+  ME = { name: 'Viewer', roomCode: '', isHost: false };
+  document.getElementById('lobby').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  // Hide room badge and playing-as, show view-only badge
+  document.getElementById('nav-code').parentElement.style.display = 'none';
+  document.getElementById('nav-myname-wrap').style.display = 'none';
+  document.getElementById('nav-viewonly-badge').style.display = 'flex';
+  // Hide draft/setup tabs — view only gets scoring, scoreboard, alltime, upcoming
+  document.getElementById('tab-setup').style.display = 'none';
+  // Go straight to scoreboard
+  gotoTab('scoreboard');
+  // Hide setup/draft from nav
+  document.querySelectorAll('.nav-tab').forEach((el, i) => {
+    const t = TAB_ORDER[i];
+    if (t === 'setup' || t === 'draft') el.style.display = 'none';
+  });
+  // Start listening for masters scores
+  listenMastersScores();
+  renderAllTime();
+}
+
+// ══════════════════════════════════════════════════════
+// UPCOMING EVENTS
+// ══════════════════════════════════════════════════════
+const UPCOMING_EVENTS = [
+  {
+    name: 'NBA Playoffs 2026',
+    sport: 'NBA', emoji: '🏀',
+    venue: 'Various Arenas', location: 'USA',
+    startDate: new Date('2026-04-18'),
+    endDate: new Date('2026-06-21'),
+    color: 'var(--nba)',
+    colorBg: 'rgba(201,70,61,.08)',
+    note: 'First round begins mid-April'
+  },
+  {
+    name: 'NHL Playoffs 2026',
+    sport: 'NHL', emoji: '🏒',
+    venue: 'Various Arenas', location: 'USA & Canada',
+    startDate: new Date('2026-04-20'),
+    endDate: new Date('2026-06-20'),
+    color: 'var(--nhl)',
+    colorBg: 'rgba(26,106,191,.08)',
+    note: 'Stanley Cup Playoffs'
+  },
+  {
+    name: 'PGA Championship 2026',
+    sport: 'PGA', emoji: '⛳',
+    venue: 'Aronimink Golf Club', location: 'Newton Square, PA',
+    startDate: new Date('2026-05-14'),
+    endDate: new Date('2026-05-17'),
+    color: 'var(--pga)',
+    colorBg: 'rgba(42,158,79,.08)',
+    note: 'Second major of the season'
+  },
+  {
+    name: 'FIFA World Cup 2026',
+    sport: 'Soccer', emoji: '⚽',
+    venue: 'Multiple Stadiums', location: 'USA, Canada & Mexico',
+    startDate: new Date('2026-06-11'),
+    endDate: new Date('2026-07-19'),
+    color: '#e8a020',
+    colorBg: 'rgba(232,160,32,.08)',
+    note: 'First 48-team World Cup'
+  },
+  {
+    name: 'US Open 2026',
+    sport: 'PGA', emoji: '⛳',
+    venue: 'Shinnecock Hills', location: 'Southampton, NY',
+    startDate: new Date('2026-06-18'),
+    endDate: new Date('2026-06-21'),
+    color: 'var(--pga)',
+    colorBg: 'rgba(42,158,79,.08)',
+    note: 'Third major of the season'
+  },
+  {
+    name: 'The Open Championship 2026',
+    sport: 'PGA', emoji: '⛳',
+    venue: 'Royal Birkdale', location: 'Southport, England',
+    startDate: new Date('2026-07-16'),
+    endDate: new Date('2026-07-19'),
+    color: 'var(--pga)',
+    colorBg: 'rgba(42,158,79,.08)',
+    note: 'The Claret Jug · 154th Open'
+  }
+];
+
+function getEventStatus(ev) {
+  const now = new Date();
+  if (now >= ev.startDate && now <= ev.endDate) return 'live';
+  if (now < ev.startDate) return 'upcoming';
+  return 'complete';
+}
+
+function getDaysUntil(date) {
+  const now = new Date();
+  const diff = date - now;
+  if (diff <= 0) return 0;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function formatEventDate(start, end) {
+  const opts = { month: 'short', day: 'numeric' };
+  const s = start.toLocaleDateString('en-US', opts);
+  const e = end.toLocaleDateString('en-US', opts);
+  const yr = end.getFullYear();
+  return `${s} – ${e}, ${yr}`;
+}
+
+function renderUpcoming() {
+  const el = document.getElementById('upcoming-grid');
+  if (!el) return;
+
+  // Sort: live first, then by start date
+  const sorted = [...UPCOMING_EVENTS].sort((a, b) => {
+    const sa = getEventStatus(a), sb = getEventStatus(b);
+    if (sa === 'live' && sb !== 'live') return -1;
+    if (sb === 'live' && sa !== 'live') return 1;
+    if (sa === 'complete' && sb !== 'complete') return 1;
+    if (sb === 'complete' && sa !== 'complete') return -1;
+    return a.startDate - b.startDate;
+  });
+
+  el.innerHTML = sorted.map(ev => {
+    const status = getEventStatus(ev);
+    const days = getDaysUntil(ev.startDate);
+
+    const statusBadge = status === 'live'
+      ? `<span class="upcoming-status-live">⬤ Live Now</span>`
+      : status === 'complete'
+      ? `<span class="upcoming-status-upcoming">Complete</span>`
+      : days <= 14
+      ? `<span class="upcoming-status-soon">${days}d away</span>`
+      : `<span class="upcoming-status-upcoming">${days} days away</span>`;
+
+    const countdown = status === 'live'
+      ? `<span style="color:var(--success);font-size:13px;font-weight:600">In Progress</span>`
+      : status === 'complete'
+      ? `<span style="color:var(--muted);font-size:12px">Completed</span>`
+      : `<span class="upcoming-countdown" style="color:var(--accent)">
+          ${days < 1 ? 'Tomorrow' : days === 1 ? '1 Day' : days + ' Days'}
+        </span>`;
+
+    // Progress bar for live events
+    const progressBar = status === 'live' ? (() => {
+      const total = ev.endDate - ev.startDate;
+      const elapsed = new Date() - ev.startDate;
+      const pct = Math.min(100, Math.round(elapsed / total * 100));
+      return `<div class="upcoming-bar" style="background:var(--border)">
+        <div style="height:100%;width:${pct}%;background:${ev.color};transition:.3s"></div>
+      </div>`;
+    })() : `<div class="upcoming-bar" style="background:var(--border)"></div>`;
+
+    return `<div class="upcoming-card" style="border-top:3px solid ${ev.color};background:${status==='live'?ev.colorBg:'var(--surface)'}">
+      ${progressBar}
+      <div class="upcoming-card-top">
+        <div class="upcoming-card-sport" style="color:${ev.color}">${ev.emoji} ${ev.sport}</div>
+        <div class="upcoming-card-name">${ev.name}</div>
+        <div class="upcoming-card-venue">${ev.venue} · ${ev.location}</div>
+        ${ev.note ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">${ev.note}</div>` : ''}
+      </div>
+      <div class="upcoming-card-bottom">
+        <div>
+          <div class="upcoming-card-dates">${formatEventDate(ev.startDate, ev.endDate)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${countdown}
+          ${statusBadge}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // Auto-refresh scoreboard every 60s
