@@ -494,7 +494,7 @@ const db = firebase.database();
 // CONSTANTS
 // ══════════════════════════════════════════════════════
 const MAJORS = [
-  {id:'masters2026',name:'The Masters',venue:'Augusta National',location:'Augusta, GA',dates:'Apr 9–12, 2026',start:new Date('2026-04-09'),end:new Date('2026-04-12'),espnId:'401580344'},
+  {id:'masters2026',name:'The Masters',venue:'Augusta National',location:'Augusta, GA',dates:'Apr 9–12, 2026',start:new Date('2026-04-09'),end:new Date('2026-04-12'),espnId:'401811941'},
   {id:'pga2026',name:'PGA Championship',venue:'Aronimink GC',location:'Newton Square, PA',dates:'May 14–17, 2026',start:new Date('2026-05-14'),end:new Date('2026-05-17'),espnId:'401580345'},
   {id:'usopen2026',name:'US Open',venue:'Shinnecock Hills',location:'Southampton, NY',dates:'Jun 18–21, 2026',start:new Date('2026-06-18'),end:new Date('2026-06-21'),espnId:'401580346'},
   {id:'theopen2026',name:'The Open Championship',venue:'Royal Birkdale',location:'Southport, England',dates:'Jul 16–19, 2026',start:new Date('2026-07-16'),end:new Date('2026-07-19'),espnId:'401580347'}
@@ -1390,7 +1390,7 @@ function showToast(msg){
 
 // Masters 2026 rosters — hardcoded
 const MASTERS_2026 = {
-  espnEventId: '401580344',
+  espnEventId: '401811941',
   contest: 'The Masters 2026',
   owners: [
     {
@@ -1433,90 +1433,90 @@ const MASTERS_2026 = {
 let mastersScoreCache = {};
 let mastersLastFetch = null;
 
-// Safe number parser — returns null (not NaN) if value is missing/invalid
+// Safe parsers that never return NaN
 function safeInt(val) {
-  if (val == null || val === '' || val === '-') return null;
-  // ESPN sometimes sends 'E' for even par
-  if (typeof val === 'string' && val.trim().toUpperCase() === 'E') return 0;
-  const n = parseInt(val, 10);
+  if (val == null || val === '' || val === '-' || val === '--') return null;
+  const s = String(val).trim().toUpperCase();
+  if (s === 'E') return 0;
+  const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+
+function parseToPar(val) {
+  if (val == null || val === '' || val === '--') return null;
+  const s = String(val).trim().toUpperCase();
+  if (s === 'E') return 0;
+  const n = parseInt(s, 10);
   return isNaN(n) ? null : n;
 }
 
 async function fetchMastersScores() {
-  try {
-    const url = `https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${MASTERS_2026.espnEventId}`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error('ESPN ' + resp.status);
-    const data = await resp.json();
+  // Try every known ESPN leaderboard URL format
+  const id = MASTERS_2026.espnEventId;
+  const endpoints = [
+    `https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?tournamentId=${id}`,
+    `https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${id}`,
+    `https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard`,
+  ];
 
-    // ESPN can nest the leaderboard in different places — try all known paths
-    const event = data?.events?.[0] || data?.event || {};
-    const competition = event?.competitions?.[0] || event?.competition || {};
-    const competitors = competition?.competitors || data?.competitors || [];
-    if (!competitors.length) throw new Error('No competitors found in ESPN response');
-
-    mastersScoreCache = {};
-    competitors.forEach(c => {
-      const displayName = c.athlete?.displayName || c.displayName || '';
-      const fullName = displayName.toLowerCase();
-      const nameParts = fullName.trim().split(/\s+/);
-      const lastName = nameParts[nameParts.length - 1];
-
-      // Round scores — ESPN linescores value can be stroke count OR score-to-par per round
-      const linescores = c.linescores || c.scores || [];
-      const rounds = linescores.map(ls => {
-        // Try .value, .displayValue, then the object itself if it's a number
-        const raw = ls?.value ?? ls?.displayValue ?? ls;
-        return safeInt(raw);
-      }).filter(v => v !== null);
-
-      // Total strokes — ESPN sometimes provides it directly
-      const totalStrokes = rounds.length > 0 ? rounds.reduce((a,b) => a+b, 0) : null;
-
-      // Score to par — c.score is usually the overall to-par as a string like "-5", "E", "+2"
-      let toPar = null;
-      const rawScore = c.score ?? c.totalScore ?? c.overallScore ?? null;
-      if (rawScore != null) {
-        const s = String(rawScore).trim().toUpperCase();
-        if (s === 'E') toPar = 0;
-        else toPar = safeInt(s);
-      }
-
-      // Position
-      const pos = c.status?.position?.displayName
-        || c.status?.displayValue
-        || c.position?.displayName
-        || (c.sortOrder ? 'T'+c.sortOrder : '—');
-
-      // Cut / withdrawal detection
-      const statusDesc = (c.status?.type?.description || c.status?.displayValue || '').toLowerCase();
-      const statusId = (c.status?.type?.id || c.status?.id || '').toLowerCase();
-      const cut = statusDesc.includes('cut') || statusDesc.includes('wd')
-        || statusDesc.includes('dq') || statusId.includes('cut')
-        || statusId === 'wd' || statusId === 'dq';
-
-      const scoreObj = {
-        displayName,
-        position: pos,
-        toPar,
-        totalStrokes,
-        rounds,
-        cut,
-        played: rounds.length
-      };
-
-      // Index by last name AND full last name fragment for better matching
-      mastersScoreCache[lastName] = scoreObj;
-      // Also store by full lowercased name with no spaces for fallback
-      mastersScoreCache[fullName.replace(/\s+/g,'')] = scoreObj;
-    });
-
-    mastersLastFetch = new Date();
-    return true;
-  } catch(e) {
-    console.warn('Masters ESPN fetch failed:', e.message);
-    return false;
+  let competitors = [];
+  for (const url of endpoints) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      // Walk every nesting path ESPN has ever shipped
+      competitors =
+        data?.events?.[0]?.competitions?.[0]?.competitors ||
+        data?.events?.[0]?.competitors ||
+        data?.competitions?.[0]?.competitors ||
+        data?.competitors || [];
+      if (competitors.length) break;
+    } catch(e) { continue; }
   }
+
+  if (!competitors.length) return false;
+
+  mastersScoreCache = {};
+  competitors.forEach(c => {
+    const displayName = c.athlete?.displayName || c.athlete?.fullName || c.displayName || '';
+    if (!displayName) return;
+    const lower = displayName.toLowerCase().trim();
+    const parts = lower.split(/\s+/);
+    const lastName = parts[parts.length - 1];
+
+    // Score to par — ESPN sends this as the overall tournament score string
+    const toPar = parseToPar(c.score ?? c.scoreValue ?? c.totalScore);
+
+    // Round-by-round strokes from linescores
+    const linescores = c.linescores || [];
+    const rounds = linescores
+      .map(ls => safeInt(ls?.value ?? ls?.displayValue ?? ls?.score))
+      .filter(n => n !== null && n > 55); // filter out junk — real stroke scores are 60+
+
+    const totalStrokes = rounds.length ? rounds.reduce((a,b)=>a+b,0) : null;
+
+    // Position string
+    const pos = c.status?.position?.displayName ||
+      c.status?.displayValue ||
+      c.position?.displayName || '—';
+
+    // Cut/WD/DQ
+    const statusText = [
+      c.status?.type?.description, c.status?.type?.name, c.status?.displayValue
+    ].filter(Boolean).join(' ').toLowerCase();
+    const cut = statusText.includes('cut') || statusText.includes('wd') ||
+      statusText.includes('withdrawn') || statusText.includes('dq');
+
+    const obj = { displayName, position: String(pos), toPar, totalStrokes, rounds, cut, played: rounds.length };
+
+    // Store indexed multiple ways so matching is reliable
+    mastersScoreCache[lastName] = obj;
+    mastersScoreCache[lower.replace(/\s+/g, '')] = obj;
+  });
+
+  mastersLastFetch = new Date();
+  return Object.keys(mastersScoreCache).length > 0;
 }
 
 function findGolferScore(espnSearch) {
