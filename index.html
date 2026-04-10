@@ -1429,11 +1429,37 @@ const MASTERS_2026 = {
   ]
 };
 
-// Cache for live golfer scores: espnSearch -> score obj
+// Masters scores stored in Firebase: golferId -> {toPar, r1, r2, r3, r4, position}
 let mastersScoreCache = {};
 let mastersLastFetch = null;
+let mastersAdminOpen = false;
 
-// Safe parsers that never return NaN
+// Load Masters scores from Firebase (manually entered by admin/host)
+async function fetchMastersScores() {
+  try {
+    const snap = await db.ref('masters2026scores').get();
+    if (!snap.exists()) return false;
+    mastersScoreCache = snap.val() || {};
+    mastersLastFetch = new Date();
+    return Object.keys(mastersScoreCache).length > 0;
+  } catch(e) {
+    console.warn('Masters score fetch failed:', e.message);
+    return false;
+  }
+}
+
+// Listen for real-time score updates
+function listenMastersScores() {
+  db.ref('masters2026scores').on('value', snap => {
+    mastersScoreCache = snap.exists() ? (snap.val() || {}) : {};
+    mastersLastFetch = new Date();
+    if(document.getElementById('tab-scoreboard') &&
+       document.getElementById('tab-scoreboard').style.display !== 'none') {
+      renderHardcodedDrafts();
+    }
+  });
+}
+
 function safeInt(val) {
   if (val == null || val === '' || val === '-' || val === '--') return null;
   const s = String(val).trim().toUpperCase();
@@ -1450,86 +1476,12 @@ function parseToPar(val) {
   return isNaN(n) ? null : n;
 }
 
-async function fetchMastersScores() {
-  // Try every known ESPN leaderboard URL format
-  const id = MASTERS_2026.espnEventId;
-  const endpoints = [
-    `https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?tournamentId=${id}`,
-    `https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${id}`,
-    `https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard`,
-  ];
-
-  let competitors = [];
-  for (const url of endpoints) {
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      // Walk every nesting path ESPN has ever shipped
-      competitors =
-        data?.events?.[0]?.competitions?.[0]?.competitors ||
-        data?.events?.[0]?.competitors ||
-        data?.competitions?.[0]?.competitors ||
-        data?.competitors || [];
-      if (competitors.length) break;
-    } catch(e) { continue; }
-  }
-
-  if (!competitors.length) return false;
-
-  mastersScoreCache = {};
-  competitors.forEach(c => {
-    const displayName = c.athlete?.displayName || c.athlete?.fullName || c.displayName || '';
-    if (!displayName) return;
-    const lower = displayName.toLowerCase().trim();
-    const parts = lower.split(/\s+/);
-    const lastName = parts[parts.length - 1];
-
-    // Score to par — ESPN sends this as the overall tournament score string
-    const toPar = parseToPar(c.score ?? c.scoreValue ?? c.totalScore);
-
-    // Round-by-round strokes from linescores
-    const linescores = c.linescores || [];
-    const rounds = linescores
-      .map(ls => safeInt(ls?.value ?? ls?.displayValue ?? ls?.score))
-      .filter(n => n !== null && n > 55); // filter out junk — real stroke scores are 60+
-
-    const totalStrokes = rounds.length ? rounds.reduce((a,b)=>a+b,0) : null;
-
-    // Position string
-    const pos = c.status?.position?.displayName ||
-      c.status?.displayValue ||
-      c.position?.displayName || '—';
-
-    // Cut/WD/DQ
-    const statusText = [
-      c.status?.type?.description, c.status?.type?.name, c.status?.displayValue
-    ].filter(Boolean).join(' ').toLowerCase();
-    const cut = statusText.includes('cut') || statusText.includes('wd') ||
-      statusText.includes('withdrawn') || statusText.includes('dq');
-
-    const obj = { displayName, position: String(pos), toPar, totalStrokes, rounds, cut, played: rounds.length };
-
-    // Store indexed multiple ways so matching is reliable
-    mastersScoreCache[lastName] = obj;
-    mastersScoreCache[lower.replace(/\s+/g, '')] = obj;
-  });
-
-  mastersLastFetch = new Date();
-  return Object.keys(mastersScoreCache).length > 0;
-}
-
 function findGolferScore(espnSearch) {
-  // Direct last-name match
+  // Direct key match (Firebase key is espnSearch value)
   if (mastersScoreCache[espnSearch]) return mastersScoreCache[espnSearch];
-  // Full name no-spaces match
-  const noSpaceSearch = espnSearch.replace(/\s+/g,'');
-  if (mastersScoreCache[noSpaceSearch]) return mastersScoreCache[noSpaceSearch];
-  // Fuzzy: any cache key that contains or is contained by search term
+  // Fuzzy match on any key
   const keys = Object.keys(mastersScoreCache);
-  const match = keys.find(k =>
-    k.length > 3 && (k.includes(espnSearch) || espnSearch.includes(k))
-  );
+  const match = keys.find(k => k.length > 3 && (k.includes(espnSearch) || espnSearch.includes(k)));
   return match ? mastersScoreCache[match] : null;
 }
 
@@ -1546,34 +1498,122 @@ function toParColor(toPar) {
   return 'var(--muted)';
 }
 
+// ── MASTERS ADMIN SCORE ENTRY ──────────────────────────
+function renderMastersAdminPanel() {
+  if (!ME.isHost) return;
+  let panel = document.getElementById('masters-admin-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'masters-admin-panel';
+    const standings = document.getElementById('ld-masters-standings');
+    if (standings && standings.parentNode) {
+      standings.parentNode.appendChild(panel);
+    }
+  }
+
+  // Collect all golfers across all owners
+  const allGolfers = [];
+  MASTERS_2026.owners.forEach(o => o.golfers.forEach(g => {
+    if (!allGolfers.find(x => x.espnSearch === g.espnSearch)) allGolfers.push(g);
+  }));
+
+  panel.innerHTML = `
+    <div style="border-top:1px solid var(--border);margin-top:0">
+      <button onclick="toggleMastersAdmin()" style="width:100%;padding:11px 18px;background:var(--surface2);border:none;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;text-align:left;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between">
+        <span>⚙ Enter Scores (Host Only)</span>
+        <span id="admin-arrow">${mastersAdminOpen ? '▲' : '▼'}</span>
+      </button>
+      <div id="masters-admin-body" style="display:${mastersAdminOpen?'block':'none'};padding:14px 18px;border-top:1px solid var(--border)">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Enter each golfer's current score to par (e.g. -5, +2, E) and their leaderboard position. Saves instantly for all users.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
+          ${allGolfers.map(g => {
+            const sc = mastersScoreCache[g.espnSearch] || {};
+            return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:8px">
+              <div style="flex:1;font-size:13px;font-weight:500">${g.name}</div>
+              <input type="text" placeholder="Pos" value="${sc.position||''}"
+                style="width:46px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;text-align:center;outline:none"
+                id="pos-${g.espnSearch}" onchange="saveMastersScore('${g.espnSearch}')"/>
+              <input type="text" placeholder="±" value="${sc.toPar!=null?formatToPar(sc.toPar):''}"
+                style="width:46px;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;text-align:center;outline:none"
+                id="par-${g.espnSearch}" onchange="saveMastersScore('${g.espnSearch}')"/>
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)">
+                <input type="checkbox" id="cut-${g.espnSearch}" ${sc.cut?'checked':''} onchange="saveMastersScore('${g.espnSearch}')"/> CUT
+              </label>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-acc btn-sm" style="width:auto" onclick="saveAllMastersScores()">Save All Scores</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearMastersScores()">Clear All</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function toggleMastersAdmin() {
+  mastersAdminOpen = !mastersAdminOpen;
+  const body = document.getElementById('masters-admin-body');
+  const arrow = document.getElementById('admin-arrow');
+  if (body) body.style.display = mastersAdminOpen ? 'block' : 'none';
+  if (arrow) arrow.textContent = mastersAdminOpen ? '▲' : '▼';
+}
+
+function parseToParInput(val) {
+  if (!val || val.trim() === '' || val.trim().toUpperCase() === 'E') return val.trim().toUpperCase() === 'E' ? 0 : null;
+  const n = parseInt(val.trim(), 10);
+  return isNaN(n) ? null : n;
+}
+
+async function saveMastersScore(id) {
+  const posEl = document.getElementById('pos-'+id);
+  const parEl = document.getElementById('par-'+id);
+  const cutEl = document.getElementById('cut-'+id);
+  if (!parEl) return;
+  const toPar = parseToParInput(parEl.value);
+  const position = posEl ? posEl.value.trim() : '';
+  const cut = cutEl ? cutEl.checked : false;
+  await db.ref('masters2026scores/'+id).set({ toPar, position, cut });
+}
+
+async function saveAllMastersScores() {
+  const allGolfers = [];
+  MASTERS_2026.owners.forEach(o => o.golfers.forEach(g => {
+    if (!allGolfers.find(x => x.espnSearch === g.espnSearch)) allGolfers.push(g);
+  }));
+  const updates = {};
+  allGolfers.forEach(g => {
+    const parEl = document.getElementById('par-'+g.espnSearch);
+    const posEl = document.getElementById('pos-'+g.espnSearch);
+    const cutEl = document.getElementById('cut-'+g.espnSearch);
+    if (!parEl) return;
+    const toPar = parseToParInput(parEl.value);
+    const position = posEl ? posEl.value.trim() : '';
+    const cut = cutEl ? cutEl.checked : false;
+    updates[g.espnSearch] = { toPar, position, cut };
+  });
+  await db.ref('masters2026scores').set(updates);
+  showToast('All scores saved!');
+}
+
+async function clearMastersScores() {
+  if (!confirm('Clear all Masters scores?')) return;
+  await db.ref('masters2026scores').remove();
+  showToast('Scores cleared.');
+}
+
+
 function renderMastersStandings() {
-  // Build owner totals — guard every number against null/NaN
   const ownerTotals = MASTERS_2026.owners.map(owner => {
     let totalToPar = 0;
-    let totalStrokes = 0;
     let scoredCount = 0;
-    let hasAnyData = false;
-
     const golferData = owner.golfers.map(g => {
       const sc = findGolferScore(g.espnSearch);
-      if (sc) hasAnyData = true;
-      // Only add to totals if golfer has played at least 1 round and isn't cut
-      if (sc && !sc.cut && sc.played > 0) {
-        if (sc.toPar != null && !isNaN(sc.toPar)) {
-          totalToPar += sc.toPar;
-          scoredCount++;
-        }
-        if (sc.totalStrokes != null && !isNaN(sc.totalStrokes)) {
-          totalStrokes += sc.totalStrokes;
-        }
-      }
+      if (sc && sc.toPar != null && !isNaN(sc.toPar)) { totalToPar += sc.toPar; scoredCount++; }
       return { ...g, sc };
     });
-
-    return { ...owner, golferData, totalToPar, totalStrokes, scoredCount, hasAnyData };
+    return { ...owner, golferData, totalToPar, scoredCount };
   });
 
-  // Sort: owners with scored golfers first, by best (lowest) toPar
   ownerTotals.sort((a, b) => {
     if (a.scoredCount === 0 && b.scoredCount === 0) return 0;
     if (a.scoredCount === 0) return 1;
@@ -1584,15 +1624,12 @@ function renderMastersStandings() {
   const rankEmoji = ['🏆','🥈','🥉'];
   const rankClass = ['r1','r2','r3'];
   const hasData = Object.keys(mastersScoreCache).length > 0;
-
   const el = document.getElementById('ld-masters-standings');
   if (!el) return;
 
   el.innerHTML = ownerTotals.map((owner, rank) => {
     const toParStr = owner.scoredCount > 0 ? formatToPar(owner.totalToPar) : '—';
     const toParCol = owner.scoredCount > 0 ? toParColor(owner.totalToPar) : 'var(--muted)';
-    const strokesStr = owner.totalStrokes > 0 ? owner.totalStrokes + ' strokes' : (hasData ? 'No scores yet' : 'Pre-tournament');
-
     return `<div class="ld-owner-row">
       <div class="ld-rank ${rankClass[rank]||''}">${rankEmoji[rank]||rank+1}</div>
       <div>
@@ -1600,37 +1637,32 @@ function renderMastersStandings() {
         <div class="ld-golfers">
           ${owner.golferData.map(g => {
             const sc = g.sc;
-            const tp = (sc && sc.toPar != null && !isNaN(sc.toPar)) ? formatToPar(sc.toPar) : '—';
-            const tpCol = (sc && sc.toPar != null && !isNaN(sc.toPar)) ? toParColor(sc.toPar) : 'var(--muted)';
-            const pos = sc?.position || '—';
-            const cut = sc?.cut || false;
-            const notStarted = sc && sc.played === 0;
+            const tp = (sc && sc.toPar != null) ? formatToPar(sc.toPar) : '—';
+            const tpCol = (sc && sc.toPar != null) ? toParColor(sc.toPar) : 'var(--muted)';
+            const pos = sc && sc.position ? sc.position : '—';
+            const cut = sc && sc.cut;
             const lastName = g.name.split(' ').pop();
             return `<div class="ld-golfer-chip ${cut?'cut':''}">
               <span style="font-size:10px;color:var(--muted)">${pos}</span>
               <span style="font-size:11px">${lastName}</span>
-              <span class="ld-golfer-score" style="color:${tpCol}">${cut?'CUT':notStarted?'NS':tp}</span>
+              <span class="ld-golfer-score" style="color:${tpCol}">${cut?'CUT':tp}</span>
             </div>`;
           }).join('')}
         </div>
       </div>
       <div class="ld-owner-total">
         <div class="ld-total-strokes" style="color:${toParCol}">${toParStr}</div>
-        <div class="ld-total-par" style="color:var(--muted);font-size:11px">${strokesStr}</div>
+        <div class="ld-total-par" style="color:var(--muted);font-size:11px">${hasData ? owner.scoredCount+' golfers scored' : 'No scores yet'}</div>
       </div>
     </div>`;
   }).join('');
+  renderMastersAdminPanel();
 }
 
-// Render all hardcoded drafts (Masters 2026 etc.) inside the scoreboard tab
 async function renderHardcodedDrafts() {
   const el = document.getElementById('sb-hardcoded-drafts');
   if (!el) return;
-
-  // Fetch live Masters scores
-  const ok = await fetchMastersScores();
-
-  // Masters 2026 card
+  await fetchMastersScores();
   el.innerHTML = `
     <div style="margin-top:24px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -1640,7 +1672,7 @@ async function renderHardcodedDrafts() {
           <span style="font-size:11px;color:var(--success);font-weight:700">LIVE</span>
           <span class="ltag tag-pga" style="font-size:10px;padding:3px 8px;border-radius:4px">PGA</span>
           <span style="font-size:11px;color:var(--muted)">Augusta National · Apr 9–12</span>
-          ${ok && mastersLastFetch ? '<span style="font-size:10px;color:var(--muted)">· Updated '+mastersLastFetch.toLocaleTimeString()+'</span>' : ''}
+          ${mastersLastFetch ? '<span style="font-size:10px;color:var(--muted)">· Updated '+mastersLastFetch.toLocaleTimeString()+'</span>' : ''}
         </div>
       </div>
       <div class="ld-draft-card">
@@ -1649,7 +1681,6 @@ async function renderHardcodedDrafts() {
         </div>
       </div>
     </div>`;
-
   renderMastersStandings();
 }
 
@@ -1668,10 +1699,12 @@ setInterval(()=>{
     if(snap.exists()){
       ME={name:s.name,roomCode:s.roomCode,isHost:s.isHost};
       enterApp(s.roomCode);
+      listenMastersScores();
       return;
     }
   }
   clearSession();
+  listenMastersScores();
 })();
 </script>
 </body>
