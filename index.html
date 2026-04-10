@@ -218,10 +218,48 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 .atr-source.historical{background:rgba(122,129,153,.15);color:var(--muted)}
 .atr-source.live{background:rgba(60,232,154,.12);color:var(--success)}
 
+/* ── LIVE DRAFTS ── */
+.ld-draft-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.ld-card-header{padding:14px 18px;border-bottom:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:space-between}
+.ld-draft-name{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.05em}
+.ld-draft-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.ld-standings{padding:0}
+.ld-owner-row{display:grid;grid-template-columns:36px 1fr auto;align-items:start;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);transition:.1s}
+.ld-owner-row:last-child{border-bottom:none}
+.ld-owner-row:hover{background:var(--surface2)}
+.ld-rank{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--muted);text-align:center;line-height:1;padding-top:2px}
+.ld-rank.r1{color:var(--accent)}
+.ld-rank.r2{color:#c0c0c0}
+.ld-rank.r3{color:#cd7f32}
+.ld-owner-name{font-size:14px;font-weight:700;margin-bottom:6px}
+.ld-golfers{display:flex;flex-wrap:wrap;gap:4px}
+.ld-golfer-chip{font-size:11px;padding:3px 8px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.ld-golfer-chip.cut{opacity:.45;text-decoration:line-through}
+.ld-golfer-score{font-family:'Bebas Neue',sans-serif;font-size:13px}
+.ld-golfer-pos{font-size:10px;color:var(--muted)}
+.ld-owner-total{text-align:right;flex-shrink:0}
+.ld-total-strokes{font-family:'Bebas Neue',sans-serif;font-size:28px;line-height:1}
+.ld-total-par{font-size:12px;margin-top:2px}
+.ld-no-drafts{padding:32px;text-align:center;color:var(--muted);font-size:14px}
+
 /* host log winner form */
 .log-form{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;display:none}
 .log-form.open{display:block}
 .log-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+
+/* winner banner on scoreboard */
+.winner-banner{background:linear-gradient(90deg,rgba(232,255,60,.1),rgba(60,232,154,.06));border:1px solid rgba(232,255,60,.3);border-radius:12px;padding:16px 20px;margin-bottom:16px;display:none;align-items:center;gap:16px}
+.winner-banner.show{display:flex}
+.winner-trophy{font-size:32px;flex-shrink:0}
+.winner-info{flex:1}
+.winner-label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.winner-name-big{font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--accent);letter-spacing:.06em;line-height:1}
+.winner-contest{font-size:12px;color:var(--muted);margin-top:4px}
+.mark-winner-btn{padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:#0d0f14;font-family:"DM Sans",sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:.15s;white-space:nowrap}
+.mark-winner-btn:hover{background:#d4eb00}
+.mark-winner-select{padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:"DM Sans",sans-serif;font-size:14px;outline:none;min-width:160px}
+.mark-winner-select:focus{border-color:var(--accent)}
+.already-logged{font-size:12px;color:var(--success);display:flex;align-items:center;gap:6px}
 </style>
 </head>
 <body>
@@ -266,6 +304,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
       <button class="nav-tab" onclick="gotoTab('scoring')">Scoring</button>
       <button class="nav-tab" onclick="gotoTab('scoreboard')">Scoreboard</button>
       <button class="nav-tab" onclick="gotoTab('alltime')">All Time</button>
+      <button class="nav-tab" onclick="gotoTab('livedrafts')">Live Drafts</button>
     </div>
     <div class="nav-right">
       <div class="my-name">Playing as <span id="nav-myname">—</span></div>
@@ -376,6 +415,16 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
           <button class="btn btn-ghost btn-sm" id="refresh-btn" onclick="triggerRefresh()">⟳ Refresh</button>
         </div>
       </div>
+      <!-- Winner banner — shown when draft is complete -->
+      <div class="winner-banner" id="winner-banner">
+        <div class="winner-trophy">🏆</div>
+        <div class="winner-info">
+          <div class="winner-label">Winner</div>
+          <div class="winner-name-big" id="winner-name-display">—</div>
+          <div class="winner-contest" id="winner-contest-display">—</div>
+        </div>
+        <div id="winner-action"></div>
+      </div>
       <div id="sb-status-bar" style="display:none" class="status-bar"></div>
       <div class="sb-grid" id="sb-grid"></div>
     </div>
@@ -410,6 +459,36 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
         </div>
         <div id="atr-list"></div>
       </div>
+    </div>
+
+    <!-- LIVE DRAFTS TAB -->
+    <div id="tab-livedrafts" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="sec-title">Live Drafts</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11px;color:var(--muted)" id="ld-updated"></span>
+          <button class="btn btn-ghost btn-sm" onclick="refreshLiveDrafts()">⟳ Refresh</button>
+        </div>
+      </div>
+      <!-- Hardcoded: Masters 2026 -->
+      <div class="ld-draft-card" id="ld-masters2026">
+        <div class="ld-card-header">
+          <div>
+            <div class="ld-draft-name">The Masters 2026</div>
+            <div class="ld-draft-meta">Augusta National · Apr 9–12, 2026</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="ldot"></div>
+            <span style="font-size:11px;color:var(--success);font-weight:700">LIVE</span>
+            <span class="ltag tag-pga" style="font-size:10px;padding:3px 8px;border-radius:4px">PGA</span>
+          </div>
+        </div>
+        <div class="ld-standings" id="ld-masters-standings">
+          <div class="empty">Loading scores...</div>
+        </div>
+      </div>
+      <!-- Firebase-based active rooms -->
+      <div id="ld-firebase-rooms"></div>
     </div>
 
   </main>
@@ -1070,14 +1149,32 @@ function renderScoreboard(){
       </div>
     </div>`).join('');
 
-  // Auto-log winner when draft is fully complete (host only)
+  // Show winner banner when draft is fully complete
   const allDone = picks.length>0 && picks.every(p=>p.team);
-  if(allDone && ME.isHost && !ROOM.winnerLogged){
+  const banner = document.getElementById('winner-banner');
+  const winnerAction = document.getElementById('winner-action');
+  if(allDone && ownerData.length){
     const topOwner = ownerData[0];
-    if(topOwner){
-      db.ref('rooms/'+ME.roomCode+'/winnerLogged').set(true);
-      autoLogDraftWinner(topOwner.participant, ROOM.draftName||'Draft');
+    banner.classList.add('show');
+    document.getElementById('winner-name-display').textContent = topOwner.participant;
+    document.getElementById('winner-contest-display').textContent = ROOM.draftName||'Draft';
+    if(ROOM.winnerLogged){
+      winnerAction.innerHTML = '<div class="already-logged"><span style="font-size:16px">✓</span> Logged to All Time Results</div>';
+    } else if(ME.isHost){
+      // Build participant dropdown so host can override if needed
+      const allParticipants = Object.values(ROOM.participants||{}).map(p=>p.name);
+      winnerAction.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          <select class="mark-winner-select" id="winner-override-select">
+            ${allParticipants.map(p=>`<option value="${p}" ${p===topOwner.participant?'selected':''}>${p}</option>`).join('')}
+          </select>
+          <button class="mark-winner-btn" onclick="markWinner()">Mark Winner &amp; Log →</button>
+        </div>`;
+    } else {
+      winnerAction.innerHTML = '<div style="font-size:12px;color:var(--muted)">Waiting for host<br>to log result</div>';
     }
+  } else {
+    banner.classList.remove('show');
   }
 
   // ticker
@@ -1096,7 +1193,7 @@ function renderScoreboard(){
 // ══════════════════════════════════════════════════════
 // TAB ROUTING + PREV/NEXT NAV
 // ══════════════════════════════════════════════════════
-const TAB_ORDER = ['setup','draft','scoring','scoreboard','alltime'];
+const TAB_ORDER = ['setup','draft','scoring','scoreboard','alltime','livedrafts'];
 let currentTab = 'setup';
 
 function gotoTab(t){
@@ -1112,6 +1209,7 @@ function gotoTab(t){
   if(t==='scoring') renderScoringTab();
   if(t==='scoreboard') triggerRefresh();
   if(t==='alltime') renderAllTime();
+  if(t==='livedrafts') refreshLiveDrafts();
   renderPageNav();
 }
 
@@ -1125,7 +1223,7 @@ function renderPageNav(){
     const idx=TAB_ORDER.indexOf(t);
     const prevT=idx>0?TAB_ORDER[idx-1]:null;
     const nextT=idx<TAB_ORDER.length-1?TAB_ORDER[idx+1]:null;
-    const tabLabels={setup:'Setup',draft:'Draft',scoring:'Scoring',scoreboard:'Scoreboard',alltime:'All Time'};
+    const tabLabels={setup:'Setup',draft:'Draft',scoring:'Scoring',scoreboard:'Scoreboard',alltime:'All Time',livedrafts:'Live Drafts'};
     pn.innerHTML=`
       <button class="page-nav-btn" ${!prevT?'disabled':''} onclick="gotoTab('${prevT||''}')">← ${prevT?tabLabels[prevT]:''}</button>
       <span class="page-nav-center">${tabLabels[t]}</span>
@@ -1255,6 +1353,18 @@ async function autoLogDraftWinner(winnerName, contestName){
   });
 }
 
+async function markWinner(){
+  const select = document.getElementById('winner-override-select');
+  const winner = select ? select.value : null;
+  if(!winner){ showToast('Select a winner first.'); return; }
+  const contestName = ROOM.draftName||'Draft';
+  await autoLogDraftWinner(winner, contestName);
+  await db.ref('rooms/'+ME.roomCode+'/winnerLogged').set(true);
+  showToast('🏆 '+winner+' logged as winner!');
+  // Refresh scoreboard to update banner
+  renderScoreboard();
+}
+
 // ══════════════════════════════════════════════════════
 // UTILS
 // ══════════════════════════════════════════════════════
@@ -1267,6 +1377,245 @@ function showToast(msg){
   t.textContent=msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2500);
 }
+
+// ══════════════════════════════════════════════════════
+// LIVE DRAFTS — MASTERS 2026
+// ══════════════════════════════════════════════════════
+
+// Masters 2026 rosters — hardcoded
+const MASTERS_2026 = {
+  espnEventId: '401580344',
+  contest: 'The Masters 2026',
+  owners: [
+    {
+      name: 'Lukas',
+      golfers: [
+        {name:'Scottie Scheffler', espnSearch:'scheffler'},
+        {name:'Tommy Fleetwood',   espnSearch:'fleetwood'},
+        {name:'Xander Schauffele', espnSearch:'schauffele'},
+        {name:'Robert MacIntyre',  espnSearch:'macintyre'},
+        {name:'Patrick Reed',      espnSearch:'reed'},
+        {name:'Akshay Bhatia',     espnSearch:'bhatia'}
+      ]
+    },
+    {
+      name: 'Drake',
+      golfers: [
+        {name:'Jon Rahm',          espnSearch:'rahm'},
+        {name:'Rory McIlroy',      espnSearch:'mcilroy'},
+        {name:'Justin Rose',       espnSearch:'rose'},
+        {name:'Matt Fitzpatrick',  espnSearch:'fitzpatrick'},
+        {name:'Shane Lowry',       espnSearch:'lowry'},
+        {name:'Adam Scott',        espnSearch:'scott'}
+      ]
+    },
+    {
+      name: 'Lincoln',
+      golfers: [
+        {name:'Bryson DeChambeau', espnSearch:'dechambeau'},
+        {name:'Ludvig Aberg',      espnSearch:'aberg'},
+        {name:'Cameron Young',     espnSearch:'young'},
+        {name:'Hideki Matsuyama',  espnSearch:'matsuyama'},
+        {name:'Jordan Spieth',     espnSearch:'spieth'},
+        {name:'Min Woo Lee',       espnSearch:'lee'}
+      ]
+    }
+  ]
+};
+
+// Cache for live golfer scores: espnSearch -> score obj
+let mastersScoreCache = {};
+let mastersLastFetch = null;
+
+async function fetchMastersScores() {
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${MASTERS_2026.espnEventId}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('ESPN ' + resp.status);
+    const data = await resp.json();
+    const competitors = data?.events?.[0]?.competitions?.[0]?.competitors || [];
+    if (!competitors.length) throw new Error('No competitors');
+
+    mastersScoreCache = {};
+    competitors.forEach(c => {
+      const fullName = (c.athlete?.displayName || '').toLowerCase();
+      const lastName = fullName.split(' ').pop();
+      const linescores = c.linescores || [];
+      const rounds = linescores.map(ls => parseInt(ls.value) || 0);
+      const totalStrokes = rounds.length ? rounds.reduce((a,b)=>a+b,0) : null;
+      const toPar = c.score != null ? parseInt(c.score) : null;
+      const status = (c.status?.type?.description || '').toLowerCase();
+      const cut = status.includes('cut') || status.includes('wd') || status.includes('dq');
+      const pos = c.status?.position?.displayName || c.sortOrder || '—';
+
+      // Store by last name for matching
+      mastersScoreCache[lastName] = {
+        displayName: c.athlete?.displayName || fullName,
+        position: pos,
+        toPar, totalStrokes, rounds, cut,
+        played: linescores.length
+      };
+    });
+    mastersLastFetch = new Date();
+    return true;
+  } catch(e) {
+    console.warn('Masters ESPN fetch failed:', e.message);
+    return false;
+  }
+}
+
+function findGolferScore(espnSearch) {
+  // Try direct last-name match first
+  if (mastersScoreCache[espnSearch]) return mastersScoreCache[espnSearch];
+  // Fuzzy: find any key that contains or is contained by search
+  const keys = Object.keys(mastersScoreCache);
+  const match = keys.find(k => k.includes(espnSearch) || espnSearch.includes(k));
+  return match ? mastersScoreCache[match] : null;
+}
+
+function formatToPar(toPar) {
+  if (toPar == null) return '—';
+  if (toPar === 0) return 'E';
+  return toPar > 0 ? '+' + toPar : '' + toPar;
+}
+
+function toParColor(toPar) {
+  if (toPar == null) return 'var(--muted)';
+  if (toPar < 0) return 'var(--success)';
+  if (toPar > 0) return 'var(--danger)';
+  return 'var(--muted)';
+}
+
+function renderMastersStandings() {
+  const par = 72;
+
+  // Build owner totals
+  const ownerTotals = MASTERS_2026.owners.map(owner => {
+    let totalStrokes = 0;
+    let totalToPar = 0;
+    let activePlayed = 0;
+    const golferData = owner.golfers.map(g => {
+      const sc = findGolferScore(g.espnSearch);
+      if (sc && sc.totalStrokes != null && !sc.cut) {
+        totalStrokes += sc.totalStrokes;
+        totalToPar += (sc.toPar || 0);
+        activePlayed++;
+      }
+      return { ...g, sc };
+    });
+    return { ...owner, golferData, totalStrokes, totalToPar, activePlayed };
+  });
+
+  // Sort by total strokes (active), then by fewest strokes
+  ownerTotals.sort((a, b) => {
+    if (!a.totalStrokes && !b.totalStrokes) return 0;
+    if (!a.totalStrokes) return 1;
+    if (!b.totalStrokes) return -1;
+    return a.totalStrokes - b.totalStrokes;
+  });
+
+  const rankEmoji = ['🏆','🥈','🥉'];
+  const rankClass = ['r1','r2','r3'];
+
+  const el = document.getElementById('ld-masters-standings');
+  if (!el) return;
+
+  const hasData = Object.keys(mastersScoreCache).length > 0;
+
+  el.innerHTML = ownerTotals.map((owner, rank) => {
+    const toParStr = owner.activePlayed > 0 ? formatToPar(owner.totalToPar) : '—';
+    const toParCol = owner.activePlayed > 0 ? toParColor(owner.totalToPar) : 'var(--muted)';
+    const strokesDisplay = owner.totalStrokes > 0 ? owner.totalStrokes : '—';
+
+    return `<div class="ld-owner-row">
+      <div class="ld-rank ${rankClass[rank]||''}">${rankEmoji[rank]||rank+1}</div>
+      <div>
+        <div class="ld-owner-name">${owner.name}</div>
+        <div class="ld-golfers">
+          ${owner.golferData.map(g => {
+            const sc = g.sc;
+            const tp = sc ? formatToPar(sc.toPar) : '—';
+            const tpCol = sc ? toParColor(sc.toPar) : 'var(--muted)';
+            const pos = sc?.position || '—';
+            const cut = sc?.cut || false;
+            const notStarted = sc && sc.played === 0;
+            return `<div class="ld-golfer-chip ${cut?'cut':''}">
+              <span style="font-size:11px;color:var(--muted)">${pos}</span>
+              <span style="font-size:11px">${g.name.split(' ').pop()}</span>
+              <span class="ld-golfer-score" style="color:${tpCol}">${cut?'CUT':notStarted?'NS':tp}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="ld-owner-total">
+        <div class="ld-total-strokes" style="color:${toParCol}">${toParStr}</div>
+        <div class="ld-total-par" style="color:var(--muted)">${strokesDisplay !== '—' ? strokesDisplay+' strokes' : hasData ? 'No scores yet' : 'Pre-tournament'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function refreshLiveDrafts() {
+  document.getElementById('ld-updated').textContent = 'Loading...';
+  const ok = await fetchMastersScores();
+  if (!ok) {
+    // Show placeholder state if API fails
+    document.getElementById('ld-updated').textContent = 'Live data unavailable';
+  } else {
+    document.getElementById('ld-updated').textContent = 'Updated ' + mastersLastFetch.toLocaleTimeString();
+  }
+  renderMastersStandings();
+  // Also load any Firebase active rooms
+  await renderFirebaseRooms();
+}
+
+async function renderFirebaseRooms() {
+  const el = document.getElementById('ld-firebase-rooms');
+  if (!el) return;
+  try {
+    const snap = await db.ref('rooms').get();
+    if (!snap.exists()) { el.innerHTML = ''; return; }
+    const rooms = Object.entries(snap.val())
+      .filter(([code, r]) => r.status === 'draft' && r.picks && r.picks.some(p=>p.team))
+      .filter(([code]) => code !== ME.roomCode); // exclude current room
+    if (!rooms.length) { el.innerHTML = ''; return; }
+    el.innerHTML = rooms.map(([code, r]) => {
+      const participants = Object.values(r.participants||{}).map(p=>p.name);
+      const totalPicks = (r.picks||[]).length;
+      const madePicks = (r.picks||[]).filter(p=>p.team).length;
+      const pct = totalPicks > 0 ? Math.round(madePicks/totalPicks*100) : 0;
+      return `<div class="ld-draft-card">
+        <div class="ld-card-header">
+          <div>
+            <div class="ld-draft-name">${r.draftName||'Draft'}</div>
+            <div class="ld-draft-meta">Room ${code} · ${participants.join(', ')}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="ldot"></div>
+            <span style="font-size:11px;color:var(--success);font-weight:700">ACTIVE</span>
+            <span style="font-size:11px;color:var(--muted)">${madePicks}/${totalPicks} picks</span>
+          </div>
+        </div>
+        <div style="padding:10px 18px;">
+          <div style="background:var(--surface2);border-radius:6px;height:6px;overflow:hidden">
+            <div style="background:var(--accent);height:100%;width:${pct}%;border-radius:6px;transition:.3s"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px">${pct}% complete · Pick ${(r.currentPick||0)+1} of ${totalPicks}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '';
+  }
+}
+
+// Auto-refresh live drafts every 60s when on that tab
+setInterval(()=>{
+  if(document.getElementById('tab-livedrafts') &&
+     document.getElementById('tab-livedrafts').style.display!=='none'){
+    refreshLiveDrafts();
+  }
+},60000);
 
 // Auto-refresh scoreboard every 60s
 setInterval(()=>{
