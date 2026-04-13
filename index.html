@@ -1517,30 +1517,85 @@ const MASTERS_2026 = {
   ]
 };
 
-// Masters scores stored in Firebase: golferId -> {toPar, r1, r2, r3, r4, position}
+// ── CLOUDFLARE WORKER PROXY ──────────────────────────
+const WORKER_URL = 'https://golf-scores-proxy.l-kacer33.workers.dev';
+
 let mastersScoreCache = {};
 let mastersLastFetch = null;
 let mastersAdminOpen = false;
+let workerScoresLoaded = false;
 
-// Load Masters scores from Firebase (manually entered by admin/host)
+async function fetchFromWorker(eventId) {
+  const resp = await fetch(`${WORKER_URL}/?event=${eventId}`);
+  if (!resp.ok) throw new Error('Worker returned ' + resp.status);
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+  return data.leaderboard || [];
+}
+
+function buildCacheFromWorker(leaderboard) {
+  mastersScoreCache = {};
+  leaderboard.forEach(p => {
+    if (!p.name) return;
+    const lower = p.name.toLowerCase().trim();
+    const parts = lower.split(/\s+/);
+    const lastName = parts[parts.length - 1];
+    const obj = {
+      displayName: p.name,
+      position: p.position || '—',
+      toPar: p.toPar,
+      totalStrokes: p.totalStrokes,
+      rounds: p.rounds || [],
+      cut: p.cut || false,
+      played: p.played || 0,
+      live: true
+    };
+    mastersScoreCache[lastName] = obj;
+    mastersScoreCache[lower.replace(/\s+/g, '')] = obj;
+  });
+}
+
 async function fetchMastersScores() {
+  // 1. Try Cloudflare Worker for live ESPN scores
+  try {
+    const leaderboard = await fetchFromWorker(MASTERS_2026.espnEventId);
+    if (leaderboard.length > 0) {
+      buildCacheFromWorker(leaderboard);
+      mastersLastFetch = new Date();
+      workerScoresLoaded = true;
+      const updates = {};
+      leaderboard.forEach(p => {
+        const parts = p.name.toLowerCase().split(/\s+/);
+        const key = parts[parts.length-1];
+        updates[key] = { toPar: p.toPar, position: p.position, cut: p.cut };
+      });
+      db.ref('masters2026scores').update(updates).catch(()=>{});
+      return true;
+    }
+  } catch(e) {
+    console.warn('Worker fetch failed, falling back to Firebase:', e.message);
+  }
+
+  // 2. Fall back to manually entered Firebase scores
   try {
     const snap = await db.ref('masters2026scores').get();
     if (!snap.exists()) return false;
     mastersScoreCache = snap.val() || {};
     mastersLastFetch = new Date();
+    workerScoresLoaded = false;
     return Object.keys(mastersScoreCache).length > 0;
   } catch(e) {
-    console.warn('Masters score fetch failed:', e.message);
+    console.warn('Firebase fallback also failed:', e.message);
     return false;
   }
 }
 
-// Listen for real-time score updates
 function listenMastersScores() {
   db.ref('masters2026scores').on('value', snap => {
-    mastersScoreCache = snap.exists() ? (snap.val() || {}) : {};
-    mastersLastFetch = new Date();
+    if (!workerScoresLoaded) {
+      mastersScoreCache = snap.exists() ? (snap.val() || {}) : {};
+      mastersLastFetch = new Date();
+    }
     if(document.getElementById('tab-scoreboard') &&
        document.getElementById('tab-scoreboard').style.display !== 'none') {
       renderHardcodedDrafts();
@@ -1794,10 +1849,16 @@ async function renderHardcodedDrafts() {
     archiveBtn.style.display = (isComplete && ME.isHost) ? 'inline-flex' : 'none';
   }
 
+  const scoreSource = workerScoresLoaded
+    ? `<span style="font-size:10px;background:rgba(60,232,154,.12);color:var(--success);padding:2px 7px;border-radius:10px;font-weight:700">⚡ Live</span>`
+    : mastersLastFetch
+    ? `<span style="font-size:10px;background:var(--surface2);color:var(--muted);padding:2px 7px;border-radius:10px;">Manual</span>`
+    : '';
+
   const statusBadge = isLive
-    ? `<div class="ldot"></div><span style="font-size:11px;color:var(--success);font-weight:700">LIVE</span>`
+    ? `<div class="ldot"></div><span style="font-size:11px;color:var(--success);font-weight:700">LIVE</span>${scoreSource}`
     : isComplete
-    ? `<span style="font-size:11px;color:var(--muted);font-weight:600">Complete</span>`
+    ? `<span style="font-size:11px;color:var(--muted);font-weight:600">Complete</span>${scoreSource}`
     : `<span style="font-size:11px;color:var(--accent);font-weight:600">Upcoming</span>`;
 
   el.innerHTML = `
