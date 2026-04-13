@@ -411,12 +411,12 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 
     <!-- SCORING TAB -->
     <div id="tab-scoring" style="display:none">
-      <div class="card" id="sc-playoff-card" style="display:none">
+      <div class="card" id="sc-playoff-card">
         <div class="sec-hdr"><div class="sec-title">Playoff Scoring</div><span class="badge host-only">Host editable</span></div>
         <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">Each round win doubles in value. Set the base points for a Round 1 win per league.</p>
         <div id="sc-playoff-body"></div>
       </div>
-      <div class="card" id="sc-pga-card" style="display:none">
+      <div class="card" id="sc-pga-card">
         <div class="sec-hdr"><div class="sec-title">PGA Scoring — <span id="sc-major-name" style="color:var(--pga)">—</span></div></div>
         <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">Total strokes across all rounds. Fewer strokes = better. Lowest combined stroke total wins the PGA portion.</p>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
@@ -435,6 +435,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
         <div class="sec-title" id="sb-title">Scoreboard</div>
         <div style="display:flex;gap:8px;align-items:center">
           <span style="font-size:11px;color:var(--muted)" id="sb-updated"></span>
+          <button class="btn btn-ghost btn-sm" id="archive-event-btn" onclick="archiveCurrentEvent()" style="display:none;border-color:rgba(255,92,92,.4);color:var(--danger)">✕ Remove Event</button>
           <button class="btn btn-ghost btn-sm" id="refresh-btn" onclick="triggerRefresh()">⟳ Refresh</button>
         </div>
       </div>
@@ -975,37 +976,43 @@ function updateClock(){
 // SCORING TAB
 // ══════════════════════════════════════════════════════
 function renderScoringTab(){
-  const leagues=ROOM.leagues||[];
-  const sportL=leagues.filter(l=>l!=='pga');
-  const hasPGA=leagues.includes('pga');
-  document.getElementById('sc-playoff-card').style.display=sportL.length?'block':'none';
-  document.getElementById('sc-pga-card').style.display=hasPGA?'block':'none';
-  const maj=ROOM.selectedMajorId?MAJORS.find(m=>m.id===ROOM.selectedMajorId):null;
-  if(maj) document.getElementById('sc-major-name').textContent=maj.name;
-  if(sportL.length){
-    document.getElementById('sc-playoff-body').innerHTML=sportL.map(l=>{
-      const cfg=PLAYOFF[l]; const base=playoffBase[l]||1;
-      const editable=ME.isHost;
-      return `<div class="sc-box" style="margin-bottom:10px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <div class="t-dot" style="background:${LCOL[l]}"></div>
-          <span style="font-weight:600;font-size:14px">${LNAME[l]}</span>
-          <span style="font-size:12px;color:var(--muted);margin-left:8px">R1 win base pts:
-            ${editable
-              ?`<input type="number" class="base-inp" value="${base}" min="1" max="20" step="1" onchange="playoffBase['${l}']=parseFloat(this.value)||1;renderScoringTab()"/>`
-              :`<strong style="color:var(--text)">${base}</strong>`}
-          </span>
-        </div>
-        <table class="sc-table"><thead><tr><th>Round</th><th>Win Worth</th><th>Champion Total</th></tr></thead><tbody>
-          ${cfg.names.map((rn,ri)=>{
-            const pts=base*Math.pow(2,ri);
-            const cum=Array.from({length:ri+1},(_,x)=>base*Math.pow(2,x)).reduce((a,b)=>a+b,0);
-            return `<tr><td>${rn}</td><td class="sc-pts">${pts%1===0?pts:pts.toFixed(1)}</td><td style="font-size:11px;color:var(--muted)">${cum%1===0?cum:cum.toFixed(1)} pts total</td></tr>`;
-          }).join('')}
-        </tbody></table>
-      </div>`;
-    }).join('');
-  }
+  // Always show all leagues regardless of current room selection
+  const ALL_SPORT_LEAGUES = ['nba','nhl','nfl','cbb'];
+
+  // Show both cards always
+  document.getElementById('sc-playoff-card').style.display = 'block';
+  document.getElementById('sc-pga-card').style.display = 'block';
+
+  // PGA label — show active major if set, otherwise generic
+  const maj = ROOM.selectedMajorId ? MAJORS.find(m=>m.id===ROOM.selectedMajorId) : null;
+  document.getElementById('sc-major-name').textContent = maj ? maj.name : 'All Majors';
+
+  // Playoff scoring — always show all 4 sport leagues
+  const editable = ME.isHost && (ROOM.leagues||[]).length > 0;
+  document.getElementById('sc-playoff-body').innerHTML = ALL_SPORT_LEAGUES.map(l => {
+    const cfg = PLAYOFF[l];
+    const base = playoffBase[l] || 1;
+    const isActive = (ROOM.leagues||[]).includes(l);
+    return `<div class="sc-box" style="margin-bottom:10px;${!isActive?'opacity:.55':''}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <div class="t-dot" style="background:${LCOL[l]}"></div>
+        <span style="font-weight:600;font-size:14px">${LNAME[l]}</span>
+        ${isActive ? '<span class="badge" style="background:rgba(60,232,154,.12);color:var(--success)">Active</span>' : '<span class="badge">Not in current draft</span>'}
+        <span style="font-size:12px;color:var(--muted);margin-left:4px">R1 win base pts:
+          ${(editable && isActive)
+            ? `<input type="number" class="base-inp" value="${base}" min="1" max="20" step="1" onchange="playoffBase['${l}']=parseFloat(this.value)||1;renderScoringTab()"/>`
+            : `<strong style="color:var(--text)">${base}</strong>`}
+        </span>
+      </div>
+      <table class="sc-table"><thead><tr><th>Round</th><th>Win Worth</th><th>Champion Total</th></tr></thead><tbody>
+        ${cfg.names.map((rn,ri)=>{
+          const pts = base * Math.pow(2, ri);
+          const cum = Array.from({length:ri+1},(_,x)=>base*Math.pow(2,x)).reduce((a,b)=>a+b,0);
+          return `<tr><td>${rn}</td><td class="sc-pts">${pts%1===0?pts:pts.toFixed(1)}</td><td style="font-size:11px;color:var(--muted)">${cum%1===0?cum:cum.toFixed(1)} pts total</td></tr>`;
+        }).join('')}
+      </tbody></table>
+    </div>`;
+  }).join('');
 }
 
 // ══════════════════════════════════════════════════════
@@ -1695,14 +1702,44 @@ function renderMastersStandings() {
 async function renderHardcodedDrafts() {
   const el = document.getElementById('sb-hardcoded-drafts');
   if (!el) return;
+
+  // Check if Masters has been archived
+  try {
+    const archivedSnap = await db.ref('archivedEvents/masters2026').get();
+    if (archivedSnap.exists()) {
+      el.innerHTML = '';
+      const archiveBtn = document.getElementById('archive-event-btn');
+      if (archiveBtn) archiveBtn.style.display = 'none';
+      return;
+    }
+  } catch(e) {}
+
   await fetchMastersScores();
+
+  // Determine if event is live, upcoming or complete
+  const mastersEvent = MAJORS.find(m => m.id === 'masters2026');
+  const now = new Date();
+  const isLive = mastersEvent && now >= mastersEvent.start && now <= mastersEvent.end;
+  const isComplete = mastersEvent && now > mastersEvent.end;
+
+  // Show archive button to host when event is complete
+  const archiveBtn = document.getElementById('archive-event-btn');
+  if (archiveBtn) {
+    archiveBtn.style.display = (isComplete && ME.isHost) ? 'inline-flex' : 'none';
+  }
+
+  const statusBadge = isLive
+    ? `<div class="ldot"></div><span style="font-size:11px;color:var(--success);font-weight:700">LIVE</span>`
+    : isComplete
+    ? `<span style="font-size:11px;color:var(--muted);font-weight:600">Complete</span>`
+    : `<span style="font-size:11px;color:var(--accent);font-weight:600">Upcoming</span>`;
+
   el.innerHTML = `
     <div style="margin-top:24px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
         <div class="sec-title" style="font-size:17px">The Masters 2026</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="ldot"></div>
-          <span style="font-size:11px;color:var(--success);font-weight:700">LIVE</span>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          ${statusBadge}
           <span class="ltag tag-pga" style="font-size:10px;padding:3px 8px;border-radius:4px">PGA</span>
           <span style="font-size:11px;color:var(--muted)">Augusta National · Apr 9–12</span>
           ${mastersLastFetch ? '<span style="font-size:10px;color:var(--muted)">· Updated '+mastersLastFetch.toLocaleTimeString()+'</span>' : ''}
@@ -1715,6 +1752,14 @@ async function renderHardcodedDrafts() {
       </div>
     </div>`;
   renderMastersStandings();
+}
+
+async function archiveCurrentEvent() {
+  if (!ME.isHost) return;
+  if (!confirm('Remove The Masters 2026 from the scoreboard? This will hide it for everyone. The scores and All Time results are not affected.')) return;
+  await db.ref('archivedEvents/masters2026').set({ archivedAt: Date.now(), archivedBy: ME.name });
+  showToast('Masters 2026 removed from scoreboard.');
+  renderHardcodedDrafts();
 }
 
 // ══════════════════════════════════════════════════════
