@@ -55,6 +55,26 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:12px 2
 .leave-btn{padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
 .leave-btn:hover{border-color:var(--danger);color:var(--danger);background:rgba(255,92,92,.07)}
 
+/* ── EVENT SCOREBOARD MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:640px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column}
+.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2);flex-shrink:0}
+.modal-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em}
+.modal-close{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:.15s}
+.modal-close:hover{border-color:var(--danger);color:var(--danger)}
+.modal-body{padding:20px;overflow-y:auto;flex:1}
+.modal-sb-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.modal-sb-row:last-child{border-bottom:none}
+.modal-sb-rank{font-family:'Bebas Neue',sans-serif;font-size:22px;width:32px;flex-shrink:0}
+.modal-sb-name{font-size:15px;font-weight:600;flex:1;margin:0 12px}
+.modal-sb-score{font-family:'Bebas Neue',sans-serif;font-size:24px}
+.modal-sb-detail{font-size:11px;color:var(--muted);margin-top:2px}
+.modal-golfer-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.modal-golfer-pill{font-size:11px;padding:3px 8px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);display:flex;gap:5px;align-items:center}
+.atr-row.clickable{cursor:pointer}
+.atr-row.clickable:hover{background:var(--surface2)}
+.atr-row.clickable .atr-contest-name::after{content:' →';color:var(--accent);font-size:11px;opacity:.7}
+
 /* ── UPCOMING EVENTS ── */
 .upcoming-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .upcoming-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.15s}
@@ -498,6 +518,22 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
     </div>
 
   </main>
+</div>
+
+<!-- EVENT SCOREBOARD MODAL -->
+<div class="modal-overlay" id="event-modal" style="display:none" onclick="closeEventModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-title">—</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px" id="modal-subtitle">—</div>
+      </div>
+      <button class="modal-close" onclick="closeEventModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="empty">Loading...</div>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1354,8 +1390,19 @@ async function renderAllTime(){
 
   // Contest history list
   document.getElementById('atr-count').textContent=results.length+' contest'+(results.length!==1?'s':'');
-  document.getElementById('atr-list').innerHTML = results.length ? results.map(r=>`
-    <div class="atr-row">
+
+  // Determine which contests have a viewable scoreboard
+  // Masters 2026 is the first on-site event; future live-logged events also get scoreboards
+  const VIEWABLE_EVENTS = {
+    'The Masters 2026': { type:'masters2026', label:'The Masters 2026' },
+    'Masters 2026': { type:'masters2026', label:'The Masters 2026' },
+  };
+
+  document.getElementById('atr-list').innerHTML = results.length ? results.map(r=>{
+    const viewable = VIEWABLE_EVENTS[r.contest] || (r.source==='live' && r.roomCode ? {type:'room', roomCode:r.roomCode, label:r.contest} : null);
+    const clickable = !!viewable;
+    const clickAttr = clickable ? `onclick="openEventScoreboard('${r.contest}', '${r.winner}', '${viewable.type}', '${viewable.roomCode||''}')"` : '';
+    return `<div class="atr-row ${clickable?'clickable':''}" ${clickAttr}>
       <div class="atr-trophy">🏆</div>
       <div style="flex:1">
         <div class="atr-contest-name">${r.contest}</div>
@@ -1366,7 +1413,8 @@ async function renderAllTime(){
         <div class="atr-winner-name">${r.winner}</div>
       </div>
       <span class="atr-source ${r.source==='live'?'live':'historical'}">${r.source==='live'?'Auto-logged':'Historical'}</span>
-    </div>`).join('') : '<div class="empty">No results yet</div>';
+    </div>`;
+  }).join('') : '<div class="empty">No results yet</div>';
 }
 
 function toggleLogForm(){
@@ -1642,14 +1690,30 @@ async function clearMastersScores() {
 }
 
 
+// CUT_PENALTY: golfers who miss the cut get +3 per missed round (rounds 3 & 4)
+const CUT_PENALTY_PER_ROUND = 3;
+
+function calcGolferToPar(sc) {
+  if (!sc) return null;
+  if (!sc.cut) return sc.toPar != null ? sc.toPar : null;
+  // Cut golfers: their entered toPar covers rounds 1+2
+  // Add +3 for each of rounds 3 and 4 they didn't play
+  const baseToPar = sc.toPar != null ? sc.toPar : 0;
+  return baseToPar + (CUT_PENALTY_PER_ROUND * 2); // +6 total
+}
+
 function renderMastersStandings() {
   const ownerTotals = MASTERS_2026.owners.map(owner => {
     let totalToPar = 0;
     let scoredCount = 0;
     const golferData = owner.golfers.map(g => {
       const sc = findGolferScore(g.espnSearch);
-      if (sc && sc.toPar != null && !isNaN(sc.toPar)) { totalToPar += sc.toPar; scoredCount++; }
-      return { ...g, sc };
+      const effectiveToPar = calcGolferToPar(sc);
+      if (effectiveToPar != null && !isNaN(effectiveToPar)) {
+        totalToPar += effectiveToPar;
+        scoredCount++;
+      }
+      return { ...g, sc, effectiveToPar };
     });
     return { ...owner, golferData, totalToPar, scoredCount };
   });
@@ -1677,15 +1741,17 @@ function renderMastersStandings() {
         <div class="ld-golfers">
           ${owner.golferData.map(g => {
             const sc = g.sc;
-            const tp = (sc && sc.toPar != null) ? formatToPar(sc.toPar) : '—';
-            const tpCol = (sc && sc.toPar != null) ? toParColor(sc.toPar) : 'var(--muted)';
+            const effective = g.effectiveToPar;
+            const rawTp = sc && sc.toPar != null ? formatToPar(sc.toPar) : '—';
+            const effTp = effective != null ? formatToPar(effective) : '—';
+            const tpCol = effective != null ? toParColor(effective) : 'var(--muted)';
             const pos = sc && sc.position ? sc.position : '—';
             const cut = sc && sc.cut;
             const lastName = g.name.split(' ').pop();
-            return `<div class="ld-golfer-chip ${cut?'cut':''}">
+            return `<div class="ld-golfer-chip ${cut?'cut':''}" title="${cut?'Cut: '+rawTp+' + 6 penalty = '+effTp:''}">
               <span style="font-size:10px;color:var(--muted)">${pos}</span>
               <span style="font-size:11px">${lastName}</span>
-              <span class="ld-golfer-score" style="color:${tpCol}">${cut?'CUT':tp}</span>
+              <span class="ld-golfer-score" style="color:${tpCol}">${cut?effTp+' ✂':effTp}</span>
             </div>`;
           }).join('')}
         </div>
@@ -1941,6 +2007,151 @@ function renderUpcoming() {
       </div>
     </div>`;
   }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// EVENT SCOREBOARD MODAL
+// ══════════════════════════════════════════════════════
+
+function closeEventModal(e) {
+  if (e && e.target !== document.getElementById('event-modal')) return;
+  document.getElementById('event-modal').style.display = 'none';
+}
+
+async function openEventScoreboard(contestName, winner, eventType, roomCode) {
+  const modal = document.getElementById('event-modal');
+  const titleEl = document.getElementById('modal-title');
+  const subtitleEl = document.getElementById('modal-subtitle');
+  const bodyEl = document.getElementById('modal-body');
+
+  titleEl.textContent = contestName;
+  subtitleEl.textContent = '🏆 Won by ' + winner;
+  bodyEl.innerHTML = '<div class="empty">Loading scoreboard...</div>';
+  modal.style.display = 'flex';
+
+  if (eventType === 'masters2026') {
+    await renderMastersModal(bodyEl);
+  } else if (eventType === 'room' && roomCode) {
+    await renderRoomModal(bodyEl, roomCode);
+  } else {
+    bodyEl.innerHTML = '<div class="empty">No scoreboard data available for this event.</div>';
+  }
+}
+
+async function renderMastersModal(bodyEl) {
+  // Load Masters scores from Firebase
+  await fetchMastersScores();
+  const hasData = Object.keys(mastersScoreCache).length > 0;
+
+  if (!hasData) {
+    bodyEl.innerHTML = '<div class="empty">No score data recorded for this event.</div>';
+    return;
+  }
+
+  // Build owner standings with cut penalty
+  const ownerTotals = MASTERS_2026.owners.map(owner => {
+    let totalToPar = 0;
+    let scoredCount = 0;
+    const golferData = owner.golfers.map(g => {
+      const sc = findGolferScore(g.espnSearch);
+      const effective = calcGolferToPar(sc);
+      if (effective != null && !isNaN(effective)) { totalToPar += effective; scoredCount++; }
+      return { ...g, sc, effectiveToPar: effective };
+    });
+    return { ...owner, golferData, totalToPar, scoredCount };
+  }).sort((a, b) => {
+    if (a.scoredCount === 0 && b.scoredCount === 0) return 0;
+    if (a.scoredCount === 0) return 1;
+    if (b.scoredCount === 0) return -1;
+    return a.totalToPar - b.totalToPar;
+  });
+
+  const rankEmoji = ['🏆','🥈','🥉'];
+
+  bodyEl.innerHTML = `
+    <div style="margin-bottom:16px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--muted)">
+      Augusta National · Apr 9–12, 2026 · Scoring: Total score to par. Cut golfers receive +3 per missed round.
+    </div>
+    ${ownerTotals.map((owner, rank) => {
+      const toParStr = owner.scoredCount > 0 ? formatToPar(owner.totalToPar) : '—';
+      const toParCol = owner.scoredCount > 0 ? toParColor(owner.totalToPar) : 'var(--muted)';
+      return `<div class="modal-sb-row">
+        <div class="modal-sb-rank" style="color:${rank===0?'var(--accent)':rank===1?'#c0c0c0':rank===2?'#cd7f32':'var(--muted)'}">${rankEmoji[rank]||rank+1}</div>
+        <div class="modal-sb-name">
+          ${owner.name}
+          <div class="modal-golfer-list">
+            ${owner.golferData.map(g => {
+              const sc = g.sc;
+              const effective = g.effectiveToPar;
+              const tp = effective != null ? formatToPar(effective) : '—';
+              const tpCol = effective != null ? toParColor(effective) : 'var(--muted)';
+              const cut = sc && sc.cut;
+              const pos = sc && sc.position ? sc.position : '—';
+              const lastName = g.name.split(' ').pop();
+              return `<span class="modal-golfer-pill ${cut?'cut':''}">
+                <span style="color:var(--muted);font-size:10px">${pos}</span>
+                <span>${lastName}</span>
+                <span style="color:${tpCol};font-weight:600">${cut?tp+' ✂':tp}</span>
+              </span>`;
+            }).join('')}
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div class="modal-sb-score" style="color:${toParCol}">${toParStr}</div>
+          <div class="modal-sb-detail">${owner.scoredCount} golfers</div>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+async function renderRoomModal(bodyEl, roomCode) {
+  try {
+    const snap = await db.ref('rooms/' + roomCode).get();
+    if (!snap.exists()) { bodyEl.innerHTML = '<div class="empty">Room data not found.</div>'; return; }
+    const room = snap.val();
+    const picks = room.picks || [];
+    const participants = Object.values(room.participants || {}).map(p => p.name);
+    const rankEmoji = ['🏆','🥈','🥉'];
+
+    // Group picks by participant
+    const byOwner = {};
+    participants.forEach(p => byOwner[p] = []);
+    picks.forEach(pk => { if (pk.team) byOwner[pk.participant]?.push(pk); });
+
+    const hasSports = (room.leagues||[]).some(l => l !== 'pga');
+    const hasPGA = (room.leagues||[]).includes('pga');
+
+    const ownerData = participants.map(p => {
+      const teams = byOwner[p] || [];
+      let pp = 0;
+      teams.forEach(pk => { if (pk.league !== 'pga') pp += getPlayoffPts(pk.team?.id, pk.league); });
+      return { participant: p, teams, pp };
+    }).sort((a, b) => b.pp - a.pp);
+
+    bodyEl.innerHTML = `
+      <div style="margin-bottom:16px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--muted)">
+        ${room.draftName||'Draft'} · Room ${roomCode} · ${picks.length} total picks
+      </div>
+      ${ownerData.map((o, rank) => `
+        <div class="modal-sb-row">
+          <div class="modal-sb-rank" style="color:${rank===0?'var(--accent)':rank===1?'#c0c0c0':rank===2?'#cd7f32':'var(--muted)'}">${rankEmoji[rank]||rank+1}</div>
+          <div class="modal-sb-name">
+            ${o.participant}
+            <div class="modal-golfer-list">
+              ${o.teams.map(pk => `<span class="modal-golfer-pill">
+                <span class="ltag tag-${pk.league}">${(pk.league||'').toUpperCase()}</span>
+                <span>${pk.league==='pga'?pk.team.name:pk.team.city+' '+pk.team.name}</span>
+              </span>`).join('')}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="modal-sb-score" style="color:${o.pp>0?'var(--accent)':'var(--muted)'}">${o.pp.toFixed(0)}</div>
+            <div class="modal-sb-detail">pts</div>
+          </div>
+        </div>`).join('')}`;
+  } catch(e) {
+    bodyEl.innerHTML = '<div class="empty">Could not load scoreboard.</div>';
+  }
 }
 
 // Auto-refresh scoreboard every 60s
