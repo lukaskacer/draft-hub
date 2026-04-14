@@ -1533,13 +1533,17 @@ async function fetchFromWorker(eventId) {
   return data.leaderboard || [];
 }
 
+// Normalize a name string for matching: lowercase, remove accents/special chars, strip spaces
+function normalizeName(s) {
+  return (s || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents (Åberg -> aberg)
+    .replace(/[^a-z0-9]/g, ''); // strip everything non-alphanumeric
+}
+
 function buildCacheFromWorker(leaderboard) {
   mastersScoreCache = {};
   leaderboard.forEach(p => {
     if (!p.name) return;
-    const lower = p.name.toLowerCase().trim();
-    const parts = lower.split(/\s+/);
-    const lastName = parts[parts.length - 1];
     const obj = {
       displayName: p.name,
       position: p.position || '—',
@@ -1550,8 +1554,18 @@ function buildCacheFromWorker(leaderboard) {
       played: p.played || 0,
       live: true
     };
-    mastersScoreCache[lastName] = obj;
-    mastersScoreCache[lower.replace(/\s+/g, '')] = obj;
+    const parts = normalizeName(p.name).replace(/[^a-z]/g,'');
+    const nameParts = p.name.toLowerCase().trim().split(/\s+/);
+    const lastName = normalizeName(nameParts[nameParts.length - 1]);
+
+    // Store under multiple keys for flexible matching
+    mastersScoreCache[lastName] = obj;                          // "macintyre"
+    mastersScoreCache[normalizeName(p.name)] = obj;             // "robertmacintyre"
+    // Also store each word individually
+    nameParts.forEach(part => {
+      const norm = normalizeName(part);
+      if (norm.length >= 3) mastersScoreCache[norm] = obj;
+    });
   });
 }
 
@@ -1563,13 +1577,15 @@ async function fetchMastersScores() {
       buildCacheFromWorker(leaderboard);
       mastersLastFetch = new Date();
       workerScoresLoaded = true;
+      // Save back to Firebase using espnSearch keys so manual panel stays in sync
       const updates = {};
-      leaderboard.forEach(p => {
-        const parts = p.name.toLowerCase().split(/\s+/);
-        const key = parts[parts.length-1];
-        updates[key] = { toPar: p.toPar, position: p.position, cut: p.cut };
+      MASTERS_2026.owners.forEach(owner => {
+        owner.golfers.forEach(g => {
+          const sc = findGolferScore(g.espnSearch);
+          if (sc) updates[g.espnSearch] = { toPar: sc.toPar, position: sc.position, cut: sc.cut };
+        });
       });
-      db.ref('masters2026scores').update(updates).catch(()=>{});
+      if (Object.keys(updates).length) db.ref('masters2026scores').update(updates).catch(()=>{});
       return true;
     }
   } catch(e) {
@@ -1620,11 +1636,21 @@ function parseToPar(val) {
 }
 
 function findGolferScore(espnSearch) {
-  // Direct key match (Firebase key is espnSearch value)
+  // Direct match by espnSearch key (works for both Firebase and Worker cache)
   if (mastersScoreCache[espnSearch]) return mastersScoreCache[espnSearch];
-  // Fuzzy match on any key
+
+  // Normalize search term and try again
+  const norm = normalizeName(espnSearch);
+  if (mastersScoreCache[norm]) return mastersScoreCache[norm];
+
+  // Fuzzy: any cache key that contains the search term or vice versa
+  // No minimum length — short names like "lee" are valid
   const keys = Object.keys(mastersScoreCache);
-  const match = keys.find(k => k.length > 3 && (k.includes(espnSearch) || espnSearch.includes(k)));
+  const match = keys.find(k => {
+    if (!k || !norm) return false;
+    const kn = normalizeName(k);
+    return kn === norm || kn.includes(norm) || norm.includes(kn);
+  });
   return match ? mastersScoreCache[match] : null;
 }
 
@@ -1750,9 +1776,10 @@ const CUT_PENALTY_PER_ROUND = 3;
 
 function calcGolferToPar(sc) {
   if (!sc) return null;
+  // For non-cut players: use their toPar directly (full 4-round tournament score)
   if (!sc.cut) return sc.toPar != null ? sc.toPar : null;
-  // Cut golfers: their entered toPar covers rounds 1+2
-  // Add +3 for each of rounds 3 and 4 they didn't play
+  // For cut players: toPar is their 2-round score, add +3 penalty for each of R3 & R4
+  // If toPar is somehow null, treat as 0 (even par for R1+R2)
   const baseToPar = sc.toPar != null ? sc.toPar : 0;
   return baseToPar + (CUT_PENALTY_PER_ROUND * 2); // +6 total
 }
