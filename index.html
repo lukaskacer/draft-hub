@@ -1533,13 +1533,17 @@ async function fetchFromWorker(eventId) {
   return data.leaderboard || [];
 }
 
-// Normalize a name string for matching: lowercase, remove accents/special chars, strip spaces
+// Normalize: lowercase, strip accents, remove all non-letters
 function normalizeName(s) {
-  return (s || '').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents (Åberg -> aberg)
-    .replace(/[^a-z0-9]/g, ''); // strip everything non-alphanumeric
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')  // strip accents: Å→a, é→e etc
+    .replace(/[^a-z]/g, '');          // keep only a-z
 }
 
+// Build a lookup map: normalized last name AND full normalized name → score object
+// Also stores the raw ESPN name so we can debug
 function buildCacheFromWorker(leaderboard) {
   mastersScoreCache = {};
   leaderboard.forEach(p => {
@@ -1554,17 +1558,18 @@ function buildCacheFromWorker(leaderboard) {
       played: p.played || 0,
       live: true
     };
-    const parts = normalizeName(p.name).replace(/[^a-z]/g,'');
-    const nameParts = p.name.toLowerCase().trim().split(/\s+/);
-    const lastName = normalizeName(nameParts[nameParts.length - 1]);
 
-    // Store under multiple keys for flexible matching
-    mastersScoreCache[lastName] = obj;                          // "macintyre"
-    mastersScoreCache[normalizeName(p.name)] = obj;             // "robertmacintyre"
-    // Also store each word individually
-    nameParts.forEach(part => {
-      const norm = normalizeName(part);
-      if (norm.length >= 3) mastersScoreCache[norm] = obj;
+    const fullNorm = normalizeName(p.name);              // e.g. "ludvigaberg"
+    const words = p.name.replace(/[.']/g, '').trim().split(/\s+/);
+    const lastNorm = normalizeName(words[words.length - 1]); // e.g. "aberg"
+
+    // Index by every useful key
+    if (fullNorm) mastersScoreCache[fullNorm] = obj;
+    if (lastNorm) mastersScoreCache[lastNorm] = obj;
+    // Index each word separately (handles "Min Woo Lee" → "lee", "minwoolee", "min", "woo")
+    words.forEach(w => {
+      const wn = normalizeName(w);
+      if (wn.length >= 2) mastersScoreCache[wn] = obj;
     });
   });
 }
@@ -1636,22 +1641,39 @@ function parseToPar(val) {
 }
 
 function findGolferScore(espnSearch) {
-  // Direct match by espnSearch key (works for both Firebase and Worker cache)
+  // 1. Direct match — espnSearch is already a normalized last name (e.g. "scheffler")
   if (mastersScoreCache[espnSearch]) return mastersScoreCache[espnSearch];
 
-  // Normalize search term and try again
+  // 2. Normalize the search key and try again
   const norm = normalizeName(espnSearch);
   if (mastersScoreCache[norm]) return mastersScoreCache[norm];
 
-  // Fuzzy: any cache key that contains the search term or vice versa
-  // No minimum length — short names like "lee" are valid
+  // 3. Partial match — find any cache key that contains or is contained by the search
   const keys = Object.keys(mastersScoreCache);
   const match = keys.find(k => {
-    if (!k || !norm) return false;
     const kn = normalizeName(k);
-    return kn === norm || kn.includes(norm) || norm.includes(kn);
+    return kn && norm && (kn === norm || kn.endsWith(norm) || norm.endsWith(kn) || kn.includes(norm) || norm.includes(kn));
   });
-  return match ? mastersScoreCache[match] : null;
+  if (match) return mastersScoreCache[match];
+
+  // 4. For Firebase scores (manual entry), keys ARE the espnSearch values — already handled above
+  return null;
+}
+
+// Debug helper — call getMastersDebugInfo() in browser console to see what's happening
+function getMastersDebugInfo() {
+  const info = { cacheKeys: Object.keys(mastersScoreCache), golferMatches: {} };
+  MASTERS_2026.owners.forEach(owner => {
+    owner.golfers.forEach(g => {
+      const sc = findGolferScore(g.espnSearch);
+      info.golferMatches[g.name] = sc
+        ? { found: true, toPar: sc.toPar, position: sc.position, cut: sc.cut, source: sc.live ? 'worker' : 'firebase' }
+        : { found: false, searchKey: g.espnSearch };
+    });
+  });
+  console.table(info.golferMatches);
+  console.log('Cache keys:', info.cacheKeys);
+  return info;
 }
 
 function formatToPar(toPar) {
