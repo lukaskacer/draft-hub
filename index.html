@@ -576,21 +576,27 @@ const PLAYOFF={
 };
 const TEAMS={
   nba:[
-    {id:'bos',name:'Celtics',city:'Boston'},{id:'nyk',name:'Knicks',city:'New York'},
-    {id:'mil',name:'Bucks',city:'Milwaukee'},{id:'ind',name:'Pacers',city:'Indiana'},
-    {id:'cle',name:'Cavaliers',city:'Cleveland'},{id:'orl',name:'Magic',city:'Orlando'},
-    {id:'mia',name:'Heat',city:'Miami'},{id:'phi',name:'76ers',city:'Philadelphia'},
-    {id:'atl',name:'Hawks',city:'Atlanta'},{id:'chi',name:'Bulls',city:'Chicago'},
-    {id:'okc',name:'Thunder',city:'OKC'},{id:'den',name:'Nuggets',city:'Denver'},
-    {id:'min',name:'Timberwolves',city:'Minnesota'},{id:'gsw',name:'Warriors',city:'Golden State'},
-    {id:'phx',name:'Suns',city:'Phoenix'},{id:'lal',name:'Lakers',city:'LA'},
-    {id:'dal',name:'Mavericks',city:'Dallas'},{id:'mem',name:'Grizzlies',city:'Memphis'},
-    {id:'nop',name:'Pelicans',city:'New Orleans'},{id:'sac',name:'Kings',city:'Sacramento'},
-    {id:'por',name:'Trail Blazers',city:'Portland'},{id:'hou',name:'Rockets',city:'Houston'},
-    {id:'tor',name:'Raptors',city:'Toronto'},{id:'uta',name:'Jazz',city:'Utah'},
-    {id:'sas',name:'Spurs',city:'San Antonio'},{id:'det',name:'Pistons',city:'Detroit'},
-    {id:'bkn',name:'Nets',city:'Brooklyn'},{id:'wsh',name:'Wizards',city:'Washington'},
-    {id:'cha',name:'Hornets',city:'Charlotte'},{id:'lac',name:'Clippers',city:'LA'}
+    // 2026 NBA Playoff Teams only
+    // EAST
+    {id:'det',name:'Pistons',city:'Detroit'},      // E1
+    {id:'bos',name:'Celtics',city:'Boston'},        // E2
+    {id:'nyk',name:'Knicks',city:'New York'},       // E3
+    {id:'cle',name:'Cavaliers',city:'Cleveland'},   // E4
+    {id:'tor',name:'Raptors',city:'Toronto'},       // E5
+    {id:'atl',name:'Hawks',city:'Atlanta'},         // E6
+    {id:'phi',name:'76ers',city:'Philadelphia'},    // E7
+    {id:'cha',name:'Hornets',city:'Charlotte'},     // E8 play-in
+    {id:'orl',name:'Magic',city:'Orlando'},          // E8 play-in
+    // WEST
+    {id:'okc',name:'Thunder',city:'OKC'},           // W1
+    {id:'sas',name:'Spurs',city:'San Antonio'},     // W2
+    {id:'den',name:'Nuggets',city:'Denver'},        // W3
+    {id:'lal',name:'Lakers',city:'LA'},             // W4
+    {id:'hou',name:'Rockets',city:'Houston'},       // W5
+    {id:'min',name:'Timberwolves',city:'Minnesota'},// W6
+    {id:'por',name:'Trail Blazers',city:'Portland'},// W7
+    {id:'phx',name:'Suns',city:'Phoenix'},          // W8 play-in
+    {id:'gsw',name:'Warriors',city:'Golden State'}, // W8 play-in
   ],
   nhl:[
     {id:'bos-h',name:'Bruins',city:'Boston'},{id:'tor-h',name:'Maple Leafs',city:'Toronto'},
@@ -2149,8 +2155,16 @@ async function openEventScoreboard(contestName, winner, eventType, roomCode) {
 }
 
 async function renderMastersModal(bodyEl) {
-  // Load Masters scores from Firebase
-  await fetchMastersScores();
+  // For the modal (past results view), always read from Firebase directly
+  // Firebase has the reliable manually-keyed scores by espnSearch key
+  try {
+    const snap = await db.ref('masters2026scores').get();
+    if (snap.exists()) {
+      const fbData = snap.val() || {};
+      // Merge Firebase data into cache — Firebase keys ARE espnSearch keys
+      Object.assign(mastersScoreCache, fbData);
+    }
+  } catch(e) {}
   const hasData = Object.keys(mastersScoreCache).length > 0;
 
   if (!hasData) {
