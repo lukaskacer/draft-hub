@@ -403,7 +403,14 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
       </div>
 
       <div class="card host-only" id="setup-start-card">
-        <div style="display:flex;justify-content:flex-end">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Draft Order</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <div id="draft-order-preview" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+              <button class="btn btn-ghost btn-sm" onclick="randomizeDraftOrder()" title="Randomly shuffle draft order">🔀 Randomize Order</button>
+            </div>
+          </div>
           <button class="btn btn-acc" style="width:auto;padding:11px 30px;font-size:15px" onclick="hostStartDraft()">Start Draft →</button>
         </div>
       </div>
@@ -599,21 +606,29 @@ const TEAMS={
     {id:'gsw',name:'Warriors',city:'Golden State'}, // W8 play-in
   ],
   nhl:[
-    {id:'bos-h',name:'Bruins',city:'Boston'},{id:'tor-h',name:'Maple Leafs',city:'Toronto'},
-    {id:'fla-h',name:'Panthers',city:'Florida'},{id:'tbl-h',name:'Lightning',city:'Tampa Bay'},
-    {id:'nyr-h',name:'Rangers',city:'New York'},{id:'pit-h',name:'Penguins',city:'Pittsburgh'},
-    {id:'wsh-h',name:'Capitals',city:'Washington'},{id:'car-h',name:'Hurricanes',city:'Carolina'},
-    {id:'col-h',name:'Avalanche',city:'Colorado'},{id:'edm-h',name:'Oilers',city:'Edmonton'},
-    {id:'dal-h',name:'Stars',city:'Dallas'},{id:'vgk-h',name:'Golden Knights',city:'Vegas'},
-    {id:'min-h',name:'Wild',city:'Minnesota'},{id:'wpg-h',name:'Jets',city:'Winnipeg'},
-    {id:'van-h',name:'Canucks',city:'Vancouver'},{id:'sea-h',name:'Kraken',city:'Seattle'},
-    {id:'lak-h',name:'Kings',city:'Los Angeles'},{id:'njd-h',name:'Devils',city:'New Jersey'},
-    {id:'buf-h',name:'Sabres',city:'Buffalo'},{id:'mtl-h',name:'Canadiens',city:'Montreal'},
-    {id:'ott-h',name:'Senators',city:'Ottawa'},{id:'phi-h',name:'Flyers',city:'Philadelphia'},
-    {id:'det-h',name:'Red Wings',city:'Detroit'},{id:'nsh-h',name:'Predators',city:'Nashville'},
-    {id:'stl-h',name:'Blues',city:'St. Louis'},{id:'chi-h',name:'Blackhawks',city:'Chicago'},
-    {id:'cbj-h',name:'Blue Jackets',city:'Columbus'},{id:'nyi-h',name:'Islanders',city:'NY'},
-    {id:'ari-h',name:'Coyotes',city:'Arizona'},{id:'sjs-h',name:'Sharks',city:'San Jose'}
+    // 2026 NHL Playoff Teams only
+    // EAST — Atlantic Division
+    {id:'buf-h',name:'Sabres',city:'Buffalo'},       // A1
+    {id:'tbl-h',name:'Lightning',city:'Tampa Bay'},  // A2
+    {id:'mtl-h',name:'Canadiens',city:'Montreal'},   // A3
+    // EAST — Metropolitan Division
+    {id:'car-h',name:'Hurricanes',city:'Carolina'},  // M1
+    {id:'pit-h',name:'Penguins',city:'Pittsburgh'},  // M2
+    {id:'phi-h',name:'Flyers',city:'Philadelphia'},  // M3
+    // EAST — Wild Cards
+    {id:'bos-h',name:'Bruins',city:'Boston'},        // WC1
+    {id:'ott-h',name:'Senators',city:'Ottawa'},      // WC2
+    // WEST — Central Division
+    {id:'col-h',name:'Avalanche',city:'Colorado'},   // C1
+    {id:'dal-h',name:'Stars',city:'Dallas'},         // C2
+    {id:'min-h',name:'Wild',city:'Minnesota'},       // C3
+    // WEST — Pacific Division
+    {id:'vgk-h',name:'Golden Knights',city:'Vegas'}, // P1
+    {id:'edm-h',name:'Oilers',city:'Edmonton'},      // P2
+    {id:'ana-h',name:'Ducks',city:'Anaheim'},        // P3
+    // WEST — Wild Cards
+    {id:'uta-h',name:'Mammoth',city:'Utah'},         // WC1
+    {id:'lak-h',name:'Kings',city:'Los Angeles'},    // WC2
   ],
   nfl:[
     {id:'kc-f',name:'Chiefs',city:'Kansas City'},{id:'buf-f',name:'Bills',city:'Buffalo'},
@@ -810,6 +825,7 @@ function onRoomUpdate(){
   renderSettingsReadonly();
   updateLeagueCards();
   updateMajorGrid();
+  renderDraftOrderPreview();
   // if draft started, switch to draft tab
   if(ROOM.status==='draft'){
     document.getElementById('waiting-room-section').style.display='none';
@@ -897,12 +913,51 @@ function pushSettings(){
   });
 }
 
+// ══════════════════════════════════════════════════════
+// DRAFT ORDER — randomize & preview
+// ══════════════════════════════════════════════════════
+function randomizeDraftOrder() {
+  const participants = Object.values(ROOM.participants || {}).map(p => p.name);
+  if (!participants.length) { showToast('Add participants first.'); return; }
+  const arr = [...participants];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  db.ref('rooms/' + ME.roomCode + '/draftOrder').set(arr);
+  showToast('Draft order randomized! 🔀');
+  renderDraftOrderPreview(arr);
+}
+
+function renderDraftOrderPreview(overrideOrder) {
+  const el = document.getElementById('draft-order-preview');
+  if (!el) return;
+  const order = overrideOrder
+    || (ROOM.draftOrder && ROOM.draftOrder.length ? ROOM.draftOrder : null)
+    || Object.values(ROOM.participants || {}).map(p => p.name);
+  if (!order.length) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--muted)">Add participants to see order</span>';
+    return;
+  }
+  el.innerHTML = order.map((name, i) =>
+    `<div style="display:flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:12px">
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--accent)">${i + 1}</span>
+      <span>${name}</span>
+    </div>`
+  ).join('');
+}
+
 async function hostStartDraft(){
   const leagues=ROOM.leagues||[];
   if(!leagues.length){ showToast('Select at least one league.'); return; }
   if(leagues.includes('pga')&&!ROOM.selectedMajorId){ showToast('Select a major tournament for PGA.'); return; }
-  const participants=Object.values(ROOM.participants||{}).map(p=>p.name);
-  if(!participants.length){ showToast('No participants yet.'); return; }
+
+  // Use custom randomized order if set, otherwise use join order
+  const rawParticipants = Object.values(ROOM.participants||{}).map(p=>p.name);
+  if(!rawParticipants.length){ showToast('No participants yet.'); return; }
+  const participants = (ROOM.draftOrder && ROOM.draftOrder.length)
+    ? ROOM.draftOrder  // respect randomized order from Firebase
+    : rawParticipants;
 
   const picks=ROOM.picksPerPerson||5;
   const format=ROOM.format||'snake';
