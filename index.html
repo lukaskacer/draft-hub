@@ -490,6 +490,9 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
         <div id="winner-action"></div>
       </div>
       <div id="sb-status-bar" style="display:none" class="status-bar"></div>
+      <div id="sb-finalize-hint" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:8px;background:rgba(60,232,154,.07);border:1px solid rgba(60,232,154,.2);font-size:13px;color:var(--success)">
+        ✓ All picks are in! Click <strong>Finalize Draft</strong> (top right) to save this draft to the scoreboard permanently.
+      </div>
       <div class="sb-grid" id="sb-grid"></div>
 
       <!-- ── HARDCODED DRAFTS ── -->
@@ -1467,6 +1470,12 @@ function renderScoreboard(){
   if (ME.isHost) renderPlayoffAdminPanel();
   // Update finalize button state
   updateFinalizeBtn();
+  // Show hint banner when all picks are in and not yet finalized
+  const hintEl = document.getElementById('sb-finalize-hint');
+  if (hintEl) {
+    const allPicksDone = picks.length > 0 && picks.every(p => p && p.team);
+    hintEl.style.display = (ME.isHost && allPicksDone && !ROOM.finalized) ? 'block' : 'none';
+  }
 
   // ticker
   const msgs=picks.filter(p=>p&&p.team).slice(0,12).map(p=>{
@@ -2741,15 +2750,19 @@ function toggleFdCard(id) {
 // Show/hide Finalize button based on draft state
 function updateFinalizeBtn() {
   const btn = document.getElementById('finalize-draft-btn');
-  if (!btn || !ME.isHost) return;
-  const picks = toArray(ROOM.picks);
-  const allDone = picks.length > 0 && picks.every(p => p && p.team);
+  if (!btn) return;
+  if (!ME.isHost) { btn.style.display = 'none'; return; }
+  // Show for host always — let them decide when draft is done
   const alreadyFinalized = ROOM.finalized;
-  btn.style.display = (allDone && !alreadyFinalized) ? 'inline-flex' : 'none';
+  btn.style.display = 'inline-flex';
   if (alreadyFinalized) {
     btn.textContent = '✓ Finalized';
     btn.disabled = true;
-    btn.style.display = 'inline-flex';
+    btn.style.color = 'var(--muted)';
+  } else {
+    btn.textContent = '✓ Finalize Draft';
+    btn.disabled = false;
+    btn.style.color = 'var(--success)';
   }
 }
 
