@@ -811,6 +811,7 @@ function enterApp(code){
   document.getElementById('waiting-room-section').style.display='block';
   if(!ME.isHost) document.getElementById('setup-readonly').style.display='block';
   renderPageNav();
+  listenPlayoffScores();
 
   // Firebase listener — react to all state changes
   db.ref('rooms/'+code).on('value', snap=>{
@@ -826,16 +827,22 @@ function onRoomUpdate(){
   updateLeagueCards();
   updateMajorGrid();
   renderDraftOrderPreview();
-  // if draft started, switch to draft tab
+  document.getElementById('sb-title').textContent=(ROOM.draftName||'My Draft')+' — Scoreboard';
   if(ROOM.status==='draft'){
     document.getElementById('waiting-room-section').style.display='none';
     renderBoard();
     renderAvail();
     updateClock();
     renderScoringTab();
+  }
+  // Always re-render scoreboard whenever room data updates, regardless of status
+  const sbTab = document.getElementById('tab-scoreboard');
+  if(sbTab && sbTab.style.display !== 'none'){
+    renderScoreboard();
+  } else {
+    // Even if tab is hidden, keep scoreboard data fresh
     renderScoreboard();
   }
-  document.getElementById('sb-title').textContent=(ROOM.draftName||'My Draft')+' — Scoreboard';
 }
 
 // ══════════════════════════════════════════════════════
@@ -1024,7 +1031,7 @@ function renderAvail(){
 
 async function makePick(teamId, league){
   const cp=ROOM.currentPick||0;
-  const picks=[...(ROOM.picks||[])];
+  const picks=[...toArray(ROOM.picks)];
   const slot=picks[cp];
   if(!slot||slot.participant!==ME.name) return;
   const team=(TEAMS[league]||[]).find(t=>t.id===teamId);
@@ -1034,7 +1041,7 @@ async function makePick(teamId, league){
 }
 
 function renderBoard(){
-  const picks=ROOM.picks||[];
+  const picks=toArray(ROOM.picks);
   const cp=ROOM.currentPick||0;
   const el=document.getElementById('board-list');
   if(!picks.length){el.innerHTML='<div class="empty">Draft not started</div>';return;}
@@ -1051,7 +1058,7 @@ function renderBoard(){
 }
 
 function updateClock(){
-  const picks=ROOM.picks||[];
+  const picks=toArray(ROOM.picks);
   const cp=ROOM.currentPick||0;
   const slot=picks[cp];
   const banner=document.getElementById('clock-banner');
@@ -1170,14 +1177,111 @@ function pgaFallback(){
   });
 }
 
-function simPlayoff(){
-  const picks=ROOM.picks||[];
-  picks.forEach(pk=>{
-    if(!pk.team||pk.league==='pga'||livePlayoff[pk.team.id]) return;
-    const seed=pk.team.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
-    const cfg=PLAYOFF[pk.league];
-    const adv=Math.floor((seed%100)/100*(cfg.rounds+1));
-    livePlayoff[pk.team.id]={wins:Array.from({length:cfg.rounds},(_,r)=>r<adv?1:0)};
+// ── PLAYOFF SCORE FETCHING ───────────────────────────
+// Maps ESPN team abbreviations/names to our internal team IDs
+// Key = lowercase ESPN abbr or name, Value = our team id
+const ESPN_TEAM_MAP = {
+  // NBA
+  'det':'det','pistons':'det','bos':'bos','celtics':'bos',
+  'nyk':'nyk','knicks':'nyk','cle':'cle','cavaliers':'cle',
+  'tor':'tor','raptors':'tor','atl':'atl','hawks':'atl',
+  'phi':'phi','76ers':'phi','sixers':'phi',
+  'cha':'cha','hornets':'cha','orl':'orl','magic':'orl',
+  'okc':'okc','thunder':'okc','sas':'sas','spurs':'sas',
+  'den':'den','nuggets':'den','lal':'lal','lakers':'lal',
+  'hou':'hou','rockets':'hou','min':'min','timberwolves':'min',
+  'por':'por','trail blazers':'por','portland':'por',
+  'phx':'phx','suns':'phx','gsw':'gsw','warriors':'gsw',
+  'golden state':'gsw',
+  // NHL
+  'buf':'buf-h','sabres':'buf-h','tbl':'tbl-h','lightning':'tbl-h',
+  'mtl':'mtl-h','canadiens':'mtl-h','car':'car-h','hurricanes':'car-h',
+  'pit':'pit-h','penguins':'pit-h','phi':'phi-h','flyers':'phi-h',
+  'bos':'bos-h','bruins':'bos-h','ott':'ott-h','senators':'ott-h',
+  'col':'col-h','avalanche':'col-h','dal':'dal-h','stars':'dal-h',
+  'min':'min-h','wild':'min-h','vgk':'vgk-h','golden knights':'vgk-h',
+  'edm':'edm-h','oilers':'edm-h','ana':'ana-h','ducks':'ana-h',
+  'uta':'uta-h','mammoth':'uta-h','utah':'uta-h',
+  'lak':'lak-h','kings':'lak-h','los angeles':'lak-h',
+  // NFL (future)
+  'kc':'kc-f','chiefs':'kc-f','buf':'buf-f','bills':'buf-f',
+  // CBB handled differently (team names vary too much)
+};
+
+function mapESPNTeamToId(abbr, name) {
+  const a = (abbr || '').toLowerCase().trim();
+  const n = (name || '').toLowerCase().trim();
+  return ESPN_TEAM_MAP[a] || ESPN_TEAM_MAP[n] ||
+    // Partial name match
+    Object.keys(ESPN_TEAM_MAP).find(k => k.length > 3 && (n.includes(k) || k.includes(n))) &&
+    ESPN_TEAM_MAP[Object.keys(ESPN_TEAM_MAP).find(k => k.length > 3 && (n.includes(k) || k.includes(n)))]
+    || null;
+}
+
+async function fetchPlayoffScoresFromWorker(league) {
+  try {
+    const resp = await fetch(`${WORKER_URL}/?type=playoffs&league=${league}`);
+    if (!resp.ok) throw new Error('Worker ' + resp.status);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.seriesResults || !Object.keys(data.seriesResults).length) return false;
+
+    // Map ESPN results onto our team IDs
+    const cfg = PLAYOFF[league];
+    Object.entries(data.seriesResults).forEach(([key, result]) => {
+      const teamId = mapESPNTeamToId(key, result.name);
+      if (!teamId) return;
+      const winsCount = result.wins || 0;
+      // Build wins array — 1 for each round won
+      const wins = Array.from({ length: cfg.rounds }, (_, i) => i < winsCount ? 1 : 0);
+      livePlayoff[teamId] = {
+        wins,
+        eliminated: result.eliminated || false,
+        league,
+        live: true
+      };
+    });
+    return true;
+  } catch(e) {
+    console.warn(`Playoff Worker fetch failed (${league}):`, e.message);
+    return false;
+  }
+}
+
+// Load playoff results — try Worker first, fall back to Firebase manual entry
+async function loadPlayoffScores() {
+  const sportLeagues = (ROOM.leagues || []).filter(l => l !== 'pga');
+
+  // Try Worker for each sport league in this draft
+  const workerResults = await Promise.all(
+    sportLeagues.map(l => fetchPlayoffScoresFromWorker(l))
+  );
+  const anyWorkerSuccess = workerResults.some(Boolean);
+
+  // Always also load Firebase manual scores (they supplement/override Worker data)
+  try {
+    const snap = await db.ref('rooms/' + ME.roomCode + '/playoffScores').get();
+    if (snap.exists()) {
+      const fbData = snap.val() || {};
+      // Firebase manual entry takes precedence over Worker data
+      Object.assign(livePlayoff, fbData);
+    }
+  } catch(e) {}
+
+  return anyWorkerSuccess;
+}
+
+// Listen for real-time Firebase playoff score updates (manual overrides)
+function listenPlayoffScores() {
+  if (!ME.roomCode) return;
+  db.ref('rooms/' + ME.roomCode + '/playoffScores').on('value', snap => {
+    const fbData = snap.exists() ? (snap.val() || {}) : {};
+    // Merge Firebase on top of any live Worker data
+    Object.assign(livePlayoff, fbData);
+    if (document.getElementById('tab-scoreboard') &&
+        document.getElementById('tab-scoreboard').style.display !== 'none') {
+      renderScoreboard();
+    }
   });
 }
 
@@ -1186,12 +1290,17 @@ async function triggerRefresh(){
   const btn=document.getElementById('refresh-btn');
   if(btn) btn.textContent='⟳ Loading...';
   const hasPGA=(ROOM.leagues||[]).includes('pga');
-  let pgaOk=true;
+  const hasSports=(ROOM.leagues||[]).some(l=>l!=='pga');
+  let pgaOk=false, playoffOk=false;
   if(hasPGA){ pgaOk=await fetchPGAScores(); if(!pgaOk) pgaFallback(); }
-  simPlayoff();
+  if(hasSports){ playoffOk=await loadPlayoffScores(); }
   fetching=false;
   if(btn) btn.textContent='⟳ Refresh';
-  document.getElementById('sb-updated').textContent='Updated '+new Date().toLocaleTimeString();
+  const sources=[];
+  if(hasPGA) sources.push(pgaOk?'⚡ Golf live':'Golf manual');
+  if(hasSports) sources.push(playoffOk?'⚡ Playoffs live':'Playoffs manual');
+  document.getElementById('sb-updated').textContent=
+    (sources.length?sources.join(' · ')+' · ':'')+new Date().toLocaleTimeString();
   renderScoreboard();
   renderHardcodedDrafts();
 }
@@ -1199,15 +1308,25 @@ async function triggerRefresh(){
 // ══════════════════════════════════════════════════════
 // SCOREBOARD
 // ══════════════════════════════════════════════════════
+
+// Firebase stores arrays as objects with numeric keys — normalize back to array
+function toArray(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  // Object with numeric keys from Firebase
+  return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => val[k]);
+}
+
 function getPlayoffPts(id,league){
   const d=livePlayoff[id]; if(!d) return 0;
   const base=playoffBase[league]||1;
-  return d.wins.reduce((sum,w,r)=>sum+w*base*Math.pow(2,r),0);
+  const wins = toArray(d.wins);
+  return wins.reduce((sum,w,r)=>sum+w*base*Math.pow(2,r),0);
 }
 
 function renderScoreboard(){
   const el=document.getElementById('sb-grid');
-  const picks=ROOM.picks||[];
+  const picks=toArray(ROOM.picks);
   const participants=Object.values(ROOM.participants||{}).map(p=>p.name);
   if(!participants.length||!picks.length){
     el.innerHTML='<div class="empty" style="grid-column:1/-1">Complete the draft to see scores.</div>';return;
@@ -1227,7 +1346,7 @@ function renderScoreboard(){
   const purePGA=hasPGA&&!hasSports;
   const byOwner={};
   participants.forEach(p=>byOwner[p]=[]);
-  picks.forEach(pk=>{ if(pk.team) byOwner[pk.participant]?.push(pk); });
+  picks.forEach(pk=>{ if(pk&&pk.team) byOwner[pk.participant]?.push(pk); });
 
   const data=participants.map(p=>{
     const teams=byOwner[p]||[];
@@ -1268,22 +1387,29 @@ function renderScoreboard(){
               </div>
             </div>`;
           } else {
-            const d=livePlayoff[pk.team?.id]||{wins:[]};
+            const d=livePlayoff[pk.team?.id];
+            const hasData = d && d.wins && d.wins.some(w=>w>0);
+            const wins = d?.wins || [];
             const cfg=PLAYOFF[pk.league];
             const pts=getPlayoffPts(pk.team?.id,pk.league);
-            const rnd=d.wins?d.wins.filter(w=>w>0).length:0;
+            const rnd=wins.filter(w=>w>0).length;
+            const eliminated = d?.eliminated || false;
             return `<div class="sb-row">
               <div>
                 <div class="sb-tname">${pk.team.city} ${pk.team.name}</div>
                 <div class="sb-detail">
-                  ${cfg&&rnd>0?cfg.names[rnd-1]+' ✓':rnd===0?'R1':''}
-                  · <span style="display:inline-flex;gap:2px;vertical-align:middle">
-                    ${(cfg?.names||[]).map((_,ri)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${d.wins&&d.wins[ri]?'var(--success)':ri===rnd?'rgba(232,255,60,.3)':'var(--border)'}"></span>`).join('')}
-                  </span>
+                  ${!hasData
+                    ? '<span style="color:var(--muted)">Playoffs not started</span>'
+                    : eliminated
+                    ? `<span style="color:var(--danger)">Eliminated · ${rnd} win${rnd!==1?'s':''}</span>`
+                    : rnd>0 ? cfg.names[rnd-1]+' ✓' : 'Round 1'}
+                  ${hasData ? `· <span style="display:inline-flex;gap:2px;vertical-align:middle">
+                    ${(cfg?.names||[]).map((_,ri)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${wins[ri]?'var(--success)':'var(--border)'}"></span>`).join('')}
+                  </span>` : ''}
                 </div>
               </div>
               <div style="text-align:right">
-                <div class="sb-score" style="color:${pts>0?'var(--accent)':'var(--muted)'}">${pts.toFixed(0)}</div>
+                <div class="sb-score" style="color:${pts>0?'var(--accent)':'var(--muted)'}">${pts>0?pts.toFixed(0):'—'}</div>
                 <div style="font-size:10px;color:var(--muted)">${LNAME[pk.league]}</div>
               </div>
             </div>`;
@@ -1293,7 +1419,7 @@ function renderScoreboard(){
     </div>`).join('');
 
   // Show winner banner when draft is fully complete
-  const allDone = picks.length>0 && picks.every(p=>p.team);
+  const allDone = picks.length>0 && picks.every(p=>p&&p.team);
   const banner = document.getElementById('winner-banner');
   const winnerAction = document.getElementById('winner-action');
   if(allDone && ownerData.length){
@@ -1320,8 +1446,11 @@ function renderScoreboard(){
     banner.classList.remove('show');
   }
 
+  // Render playoff admin panel for host
+  if (ME.isHost) renderPlayoffAdminPanel();
+
   // ticker
-  const msgs=picks.filter(p=>p.team).slice(0,12).map(p=>{
+  const msgs=picks.filter(p=>p&&p.team).slice(0,12).map(p=>{
     if(p.league==='pga'){
       const sc=liveScores[p.team.id]||{};
       const tp=sc.toPar!=null?(sc.toPar>0?'+'+sc.toPar:sc.toPar===0?'E':''+sc.toPar):'—';
@@ -2331,6 +2460,105 @@ async function renderRoomModal(bodyEl, roomCode) {
   } catch(e) {
     bodyEl.innerHTML = '<div class="empty">Could not load scoreboard.</div>';
   }
+}
+
+// ══════════════════════════════════════════════════════
+// PLAYOFF SCORE ADMIN PANEL
+// ══════════════════════════════════════════════════════
+function renderPlayoffAdminPanel() {
+  if (!ME.isHost) return;
+
+  // Only show if current room has sport leagues
+  const sportLeagues = (ROOM.leagues || []).filter(l => l !== 'pga');
+  if (!sportLeagues.length) return;
+
+  // Get all unique drafted sport teams
+  const draftedTeams = [];
+  (ROOM.picks || []).forEach(pk => {
+    if (pk.team && pk.league && pk.league !== 'pga') {
+      if (!draftedTeams.find(t => t.id === pk.team.id)) {
+        draftedTeams.push({ ...pk.team, league: pk.league });
+      }
+    }
+  });
+  if (!draftedTeams.length) return;
+
+  // Find or create admin panel below sb-grid
+  let panel = document.getElementById('playoff-admin-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'playoff-admin-panel';
+    const sbGrid = document.getElementById('sb-grid');
+    if (sbGrid && sbGrid.parentNode) sbGrid.parentNode.insertBefore(panel, sbGrid.nextSibling);
+  }
+
+  // Group teams by league
+  const byLeague = {};
+  draftedTeams.forEach(t => {
+    if (!byLeague[t.league]) byLeague[t.league] = [];
+    byLeague[t.league].push(t);
+  });
+
+  panel.innerHTML = `
+    <div style="margin-top:20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <button onclick="togglePlayoffAdmin()" style="width:100%;padding:12px 18px;background:var(--surface2);border:none;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;text-transform:uppercase;letter-spacing:.04em">
+        <span>⚙ Enter Playoff Results (Host Only)</span>
+        <span id="playoff-admin-arrow">▼</span>
+      </button>
+      <div id="playoff-admin-body" style="display:none;padding:16px 18px">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">For each team, enter how many rounds they won and check "Eliminated" once they're out. Saves instantly for all users.</p>
+        ${Object.entries(byLeague).map(([league, teams]) => {
+          const cfg = PLAYOFF[league];
+          return `<div style="margin-bottom:16px">
+            <div style="font-size:11px;font-weight:700;color:${LCOL[league]};text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${LNAME[league]}</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
+              ${teams.map(t => {
+                const d = livePlayoff[t.id] || {};
+                const wins = d.wins || Array(cfg.rounds).fill(0);
+                const eliminated = d.eliminated || false;
+                return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
+                  <div style="font-size:13px;font-weight:600;margin-bottom:8px">${t.city} ${t.name}</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                    ${cfg.names.map((rname, ri) => `
+                      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);cursor:pointer">
+                        <input type="checkbox" id="win-${t.id}-${ri}" ${wins[ri] ? 'checked' : ''}
+                          onchange="savePlayoffWin('${t.id}','${league}',${ri},this.checked)"/>
+                        ${rname}
+                      </label>`).join('')}
+                    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--danger);cursor:pointer;margin-left:4px;border-left:1px solid var(--border);padding-left:8px">
+                      <input type="checkbox" id="elim-${t.id}" ${eliminated ? 'checked' : ''}
+                        onchange="savePlayoffElim('${t.id}','${league}',this.checked)"/>
+                      Eliminated
+                    </label>
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+let playoffAdminOpen = false;
+function togglePlayoffAdmin() {
+  playoffAdminOpen = !playoffAdminOpen;
+  const body = document.getElementById('playoff-admin-body');
+  const arrow = document.getElementById('playoff-admin-arrow');
+  if (body) body.style.display = playoffAdminOpen ? 'block' : 'none';
+  if (arrow) arrow.textContent = playoffAdminOpen ? '▲' : '▼';
+}
+
+async function savePlayoffWin(teamId, league, roundIndex, won) {
+  const cfg = PLAYOFF[league];
+  const current = livePlayoff[teamId] || { wins: Array(cfg.rounds).fill(0), eliminated: false };
+  const wins = [...(current.wins || Array(cfg.rounds).fill(0))];
+  wins[roundIndex] = won ? 1 : 0;
+  await db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ wins, league });
+}
+
+async function savePlayoffElim(teamId, league, eliminated) {
+  await db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ eliminated, league });
 }
 
 // Auto-refresh scoreboard every 60s
