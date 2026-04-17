@@ -75,6 +75,18 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:12px 2
 .atr-row.clickable:hover{background:var(--surface2)}
 .atr-row.clickable .atr-contest-name::after{content:' →';color:var(--accent);font-size:11px;opacity:.7}
 
+/* ── FINALIZED DRAFTS ── */
+.fd-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.fd-card-header{padding:13px 18px;border-bottom:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+.fd-card-header:hover{background:var(--border)}
+.fd-card-title{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.05em}
+.fd-card-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.fd-card-body{padding:0}
+.fd-status-active{background:rgba(60,232,154,.12);color:var(--success);padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700}
+.fd-status-done{background:var(--surface2);color:var(--muted);padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600}
+.fd-section-hdr{padding:10px 18px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);margin-top:14px;display:flex;align-items:center;justify-content:space-between}
+.fd-section-hdr:first-child{margin-top:0}
+
 /* ── UPCOMING EVENTS ── */
 .upcoming-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
 .upcoming-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:.15s}
@@ -460,8 +472,9 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
       <div class="ticker"><div class="ldot"></div><span style="color:var(--success);font-weight:700;font-size:11px;flex-shrink:0">LIVE</span><div class="ticker-inner" id="ticker">—</div></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="sec-title" id="sb-title">Scoreboard</div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--muted)" id="sb-updated"></span>
+          <button class="btn btn-ghost btn-sm" id="finalize-draft-btn" onclick="finalizeDraft()" style="display:none;border-color:rgba(60,232,154,.4);color:var(--success)">✓ Finalize Draft</button>
           <button class="btn btn-ghost btn-sm" id="archive-event-btn" onclick="archiveCurrentEvent()" style="display:none;border-color:rgba(255,92,92,.4);color:var(--danger)">✕ Remove Event</button>
           <button class="btn btn-ghost btn-sm" id="refresh-btn" onclick="triggerRefresh()">⟳ Refresh</button>
         </div>
@@ -481,6 +494,9 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 
       <!-- ── HARDCODED DRAFTS ── -->
       <div id="sb-hardcoded-drafts"></div>
+
+      <!-- ── FINALIZED DRAFTS ── -->
+      <div id="sb-finalized-drafts"></div>
     </div>
 
     <!-- ALL TIME RESULTS TAB -->
@@ -1303,6 +1319,7 @@ async function triggerRefresh(){
     (sources.length?sources.join(' · ')+' · ':'')+new Date().toLocaleTimeString();
   renderScoreboard();
   renderHardcodedDrafts();
+  renderFinalizedDrafts();
 }
 
 // ══════════════════════════════════════════════════════
@@ -1448,6 +1465,8 @@ function renderScoreboard(){
 
   // Render playoff admin panel for host
   if (ME.isHost) renderPlayoffAdminPanel();
+  // Update finalize button state
+  updateFinalizeBtn();
 
   // ticker
   const msgs=picks.filter(p=>p&&p.team).slice(0,12).map(p=>{
@@ -1479,7 +1498,7 @@ function gotoTab(t){
   });
   if(t==='draft'){ renderAvail(); renderBoard(); updateClock(); }
   if(t==='scoring') renderScoringTab();
-  if(t==='scoreboard') triggerRefresh();
+  if(t==='scoreboard'){ triggerRefresh(); renderFinalizedDrafts(); }
   if(t==='alltime') renderAllTime();
   if(t==='upcoming') renderUpcoming();
   renderPageNav();
@@ -2559,6 +2578,179 @@ async function savePlayoffWin(teamId, league, roundIndex, won) {
 
 async function savePlayoffElim(teamId, league, eliminated) {
   await db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ eliminated, league });
+}
+
+// ══════════════════════════════════════════════════════
+// FINALIZED DRAFTS
+// ══════════════════════════════════════════════════════
+
+async function finalizeDraft() {
+  if (!ME.isHost) return;
+  const picks = toArray(ROOM.picks);
+  if (!picks.every(p => p && p.team)) {
+    if (!confirm('Not all picks are in yet. Finalize anyway?')) return;
+  }
+  if (!confirm(`Finalize "${ROOM.draftName || 'Draft'}"? This saves a permanent snapshot to the scoreboard that everyone can see even after leaving the room.`)) return;
+
+  // Build snapshot
+  const snapshot = {
+    id: ME.roomCode,
+    draftName: ROOM.draftName || 'Draft',
+    leagues: ROOM.leagues || [],
+    selectedMajorId: ROOM.selectedMajorId || null,
+    participants: Object.values(ROOM.participants || {}).map(p => p.name),
+    picks: picks,
+    playoffBase: playoffBase,
+    finalizedAt: Date.now(),
+    finalizedBy: ME.name,
+    status: 'active', // active = still scoring, complete = done
+  };
+
+  await db.ref('finalizedDrafts/' + ME.roomCode).set(snapshot);
+  // Mark room as finalized
+  await db.ref('rooms/' + ME.roomCode + '/finalized').set(true);
+
+  const btn = document.getElementById('finalize-draft-btn');
+  if (btn) { btn.textContent = '✓ Finalized!'; btn.disabled = true; }
+  showToast('Draft finalized and saved to scoreboard!');
+  renderFinalizedDrafts();
+}
+
+async function closeFinalizedDraft(draftId) {
+  if (!ME.isHost) return;
+  if (!confirm('Remove this draft from the scoreboard? Scores and All Time results are not affected.')) return;
+  await db.ref('finalizedDrafts/' + draftId + '/status').set('closed');
+  renderFinalizedDrafts();
+  showToast('Draft removed from scoreboard.');
+}
+
+// Track which finalized draft cards are expanded
+const fdExpanded = {};
+
+async function renderFinalizedDrafts() {
+  const el = document.getElementById('sb-finalized-drafts');
+  if (!el) return;
+
+  try {
+    const snap = await db.ref('finalizedDrafts').get();
+    if (!snap.exists()) { el.innerHTML = ''; return; }
+
+    const drafts = Object.values(snap.val() || {})
+      .filter(d => d.status !== 'closed')
+      .sort((a, b) => (b.finalizedAt || 0) - (a.finalizedAt || 0));
+
+    if (!drafts.length) { el.innerHTML = ''; return; }
+
+    // Load playoff scores for all finalized drafts
+    // Scores are stored per-room in playoffScores, per-league in livePlayoff
+    el.innerHTML = drafts.map(draft => {
+      const isExpanded = fdExpanded[draft.id] !== false; // default expanded
+      const picks = toArray(draft.picks);
+      const participants = draft.participants || [];
+      const hasSports = (draft.leagues || []).some(l => l !== 'pga');
+      const hasPGA = (draft.leagues || []).includes('pga');
+      const purePGA = hasPGA && !hasSports;
+
+      const byOwner = {};
+      participants.forEach(p => byOwner[p] = []);
+      picks.forEach(pk => { if (pk && pk.team) byOwner[pk.participant]?.push(pk); });
+
+      const ownerData = participants.map(p => {
+        const teams = byOwner[p] || [];
+        let pp = 0, str = 0, pc = 0;
+        teams.forEach(pk => {
+          if (pk.league === 'pga') {
+            const sc = liveScores[pk.team?.id] || {};
+            if (sc.total != null) { str += sc.total; pc++; }
+          } else {
+            pp += getPlayoffPts(pk.team?.id, pk.league);
+          }
+        });
+        return { participant: p, teams, pp, str, pc };
+      }).sort((a, b) => purePGA ? (a.str || 9999) - (b.str || 9999) : b.pp - a.pp);
+
+      const leagueNames = (draft.leagues || []).map(l => LNAME[l]).join(' · ');
+      const date = draft.finalizedAt ? new Date(draft.finalizedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      const isCurrentRoom = draft.id === ME.roomCode;
+
+      return `<div class="fd-card" id="fd-${draft.id}">
+        <div class="fd-card-header" onclick="toggleFdCard('${draft.id}')">
+          <div>
+            <div class="fd-card-title">${draft.draftName || 'Draft'}</div>
+            <div class="fd-card-meta">${leagueNames}${date ? ' · Finalized ' + date : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="${draft.status === 'active' ? 'fd-status-active' : 'fd-status-done'}">${draft.status === 'active' ? 'Active' : 'Complete'}</span>
+            ${isCurrentRoom && ME.isHost ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:rgba(255,92,92,.3)" onclick="event.stopPropagation();closeFinalizedDraft('${draft.id}')">✕ Remove</button>` : ''}
+            <span style="color:var(--muted);font-size:14px">${isExpanded ? '▲' : '▼'}</span>
+          </div>
+        </div>
+        <div id="fd-body-${draft.id}" style="display:${isExpanded ? 'block' : 'none'}">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:14px 18px">
+            ${ownerData.map((o, rank) => {
+              const rankEmoji = ['🏆','🥈','🥉'][rank] || '';
+              return `<div style="background:var(--surface2);border:1px solid ${rank === 0 ? 'rgba(232,255,60,.3)' : 'var(--border)'};border-radius:10px;padding:12px 14px">
+                <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:4px">${rankEmoji} ${o.participant}</div>
+                <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:${o.pp > 0 || o.pc > 0 ? 'var(--accent)' : 'var(--muted)'}">
+                  ${hasSports ? o.pp.toFixed(0) + '<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">pts</span>' : ''}
+                  ${hasPGA && o.pc > 0 ? o.str + '<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">str</span>' : ''}
+                  ${!hasSports && (!hasPGA || o.pc === 0) ? '—' : ''}
+                </div>
+                <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:3px">
+                  ${o.teams.map(pk => {
+                    if (!pk || !pk.team) return '';
+                    const d = livePlayoff[pk.team?.id];
+                    const wins = d ? toArray(d.wins).filter(w => w > 0).length : 0;
+                    const elim = d?.eliminated;
+                    const sc = pk.league === 'pga' ? (liveScores[pk.team?.id] || {}) : null;
+                    const label = pk.league === 'pga' ? pk.team.name.split(' ').pop()
+                      : (pk.team.city + ' ' + pk.team.name).replace('LA ', '').replace('New York ', 'NY ');
+                    const score = pk.league === 'pga'
+                      ? (sc?.toPar != null ? (sc.toPar === 0 ? 'E' : (sc.toPar > 0 ? '+' : '') + sc.toPar) : '—')
+                      : (wins > 0 ? wins + 'W' : '—');
+                    const col = pk.league === 'pga'
+                      ? (sc?.toPar != null ? (sc.toPar < 0 ? 'var(--success)' : sc.toPar > 0 ? 'var(--danger)' : 'var(--muted)') : 'var(--muted)')
+                      : (elim ? 'var(--danger)' : wins > 0 ? 'var(--success)' : 'var(--muted)');
+                    return `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border);display:flex;gap:3px;align-items:center">
+                      ${label}
+                      <span style="color:${col};font-weight:700">${score}</span>
+                    </span>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch(e) {
+    console.warn('renderFinalizedDrafts error:', e);
+    el.innerHTML = '';
+  }
+}
+
+function toggleFdCard(id) {
+  fdExpanded[id] = !( fdExpanded[id] !== false );
+  const body = document.getElementById('fd-body-' + id);
+  const header = document.getElementById('fd-' + id)?.querySelector('.fd-card-header span:last-child');
+  if (body) body.style.display = fdExpanded[id] !== false ? 'block' : 'none';
+  if (header) header.textContent = fdExpanded[id] !== false ? '▲' : '▼';
+}
+
+// Show/hide Finalize button based on draft state
+function updateFinalizeBtn() {
+  const btn = document.getElementById('finalize-draft-btn');
+  if (!btn || !ME.isHost) return;
+  const picks = toArray(ROOM.picks);
+  const allDone = picks.length > 0 && picks.every(p => p && p.team);
+  const alreadyFinalized = ROOM.finalized;
+  btn.style.display = (allDone && !alreadyFinalized) ? 'inline-flex' : 'none';
+  if (alreadyFinalized) {
+    btn.textContent = '✓ Finalized';
+    btn.disabled = true;
+    btn.style.display = 'inline-flex';
+  }
 }
 
 // Auto-refresh scoreboard every 60s
