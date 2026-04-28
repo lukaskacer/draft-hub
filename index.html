@@ -547,6 +547,22 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
   </main>
 </div>
 
+<!-- SCORE EDIT MODAL -->
+<div id="score-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;align-items:center;justify-content:center;padding:20px" onclick="closeScoreEditModal(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:680px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);background:var(--surface2);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em">Edit Playoff Scores</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Check rounds won · Mark teams eliminated · Saves instantly</div>
+      </div>
+      <button onclick="document.getElementById('score-edit-modal').style.display='none';loadGlobalPlayoffScores().then(()=>{renderScoreboard();renderFinalizedDrafts();})" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+    <div id="score-edit-modal-body" style="padding:20px;overflow-y:auto;flex:1">
+      <div class="empty">Loading...</div>
+    </div>
+  </div>
+</div>
+
 <!-- EVENT SCOREBOARD MODAL -->
 <div class="modal-overlay" id="event-modal" style="display:none" onclick="closeEventModal(event)">
   <div class="modal-box">
@@ -1462,21 +1478,7 @@ function renderScoreboard(){
                     ${cfg.names.map((_,ri)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${wins[ri]?'var(--success)':'var(--border)'}"></span>`).join('')}
                   </span>` : ''}
                 </div>
-                <!-- INLINE EDIT CONTROLS — shown in edit mode -->
-                <div class="sb-edit-controls" id="edit-${tid}" style="display:none;margin-top:8px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
-                  <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Round Wins</div>
-                  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-                    ${cfg.names.map((rname,ri)=>`
-                      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:${wins[ri]?'var(--success)':'var(--muted)'};cursor:pointer;white-space:nowrap">
-                        <input type="checkbox" ${wins[ri]?'checked':''} onchange="savePlayoffWin('${pk.team.id}','${pk.league}',${ri},this.checked);rerenderAfterSave()"/>
-                        ${rname}
-                      </label>`).join('')}
-                    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--danger);cursor:pointer;padding-left:8px;border-left:1px solid var(--border);white-space:nowrap">
-                      <input type="checkbox" ${eliminated?'checked':''} onchange="savePlayoffElim('${pk.team.id}','${pk.league}',this.checked);rerenderAfterSave()"/>
-                      Eliminated
-                    </label>
-                  </div>
-                </div>
+
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div class="sb-score" style="color:${eliminated?'var(--danger)':pts>0?'var(--accent)':'var(--muted)'}">${eliminated&&pts===0?'OUT':pts>0?pts.toFixed(0):'—'}</div>
@@ -2550,37 +2552,114 @@ async function renderRoomModal(bodyEl, roomCode) {
 }
 
 // ══════════════════════════════════════════════════════
-// SCORE EDIT MODE
+// SCORE EDIT MODAL
 // ══════════════════════════════════════════════════════
-let scoreEditMode = false;
 
 function toggleScoreEditMode() {
-  scoreEditMode = !scoreEditMode;
-  const btn = document.getElementById('edit-scores-btn');
-  if (btn) {
-    btn.textContent = scoreEditMode ? '✓ Done Editing' : '✏ Edit Scores';
-    btn.style.background = scoreEditMode ? 'rgba(60,232,255,.15)' : '';
-    btn.style.borderColor = scoreEditMode ? 'var(--accent2)' : 'rgba(60,232,255,.3)';
-  }
-  // Show/hide all inline edit control panels
-  document.querySelectorAll('.sb-edit-controls').forEach(el => {
-    el.style.display = scoreEditMode ? 'block' : 'none';
-  });
+  openScoreEditModal();
 }
 
 function rerenderAfterSave() {
-  // Re-render scoreboard after a short delay to reflect new scores
   setTimeout(() => {
     loadGlobalPlayoffScores().then(() => {
       renderScoreboard();
-      // Re-apply edit mode visibility after re-render
-      if (scoreEditMode) {
-        document.querySelectorAll('.sb-edit-controls').forEach(el => {
-          el.style.display = 'block';
-        });
+      renderFinalizedDrafts();
+      // Refresh the modal content too if still open
+      const modal = document.getElementById('score-edit-modal');
+      if (modal && modal.style.display !== 'none') {
+        renderScoreEditModalBody();
       }
     });
-  }, 500);
+  }, 400);
+}
+
+function openScoreEditModal() {
+  const modal = document.getElementById('score-edit-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  renderScoreEditModalBody();
+}
+
+function closeScoreEditModal(e) {
+  if (e && e.target !== document.getElementById('score-edit-modal')) return;
+  document.getElementById('score-edit-modal').style.display = 'none';
+  // Refresh scoreboard when modal closes
+  loadGlobalPlayoffScores().then(() => { renderScoreboard(); renderFinalizedDrafts(); });
+}
+
+function renderScoreEditModalBody() {
+  const body = document.getElementById('score-edit-modal-body');
+  if (!body) return;
+
+  // Gather all unique sport teams from active room + finalized drafts
+  const allTeams = {}; // id -> {team, league}
+
+  toArray(ROOM.picks).forEach(pk => {
+    if (pk && pk.team && pk.league && pk.league !== 'pga') {
+      allTeams[pk.team.id] = { team: pk.team, league: pk.league };
+    }
+  });
+
+  const fdCache = window.finalizedDraftCache || {};
+  Object.values(fdCache).forEach(draft => {
+    toArray(draft.picks).forEach(pk => {
+      if (pk && pk.team && pk.league && pk.league !== 'pga') {
+        allTeams[pk.team.id] = { team: pk.team, league: pk.league };
+      }
+    });
+  });
+
+  const teams = Object.values(allTeams);
+  if (!teams.length) {
+    body.innerHTML = '<div class="empty">No sport teams found in any draft. Complete a draft first.</div>';
+    return;
+  }
+
+  // Group by league
+  const byLeague = {};
+  teams.forEach(({ team, league }) => {
+    if (!byLeague[league]) byLeague[league] = [];
+    if (!byLeague[league].find(t => t.id === team.id)) byLeague[league].push({ ...team, league });
+  });
+
+  body.innerHTML = Object.entries(byLeague).map(([league, lteams]) => {
+    const cfg = PLAYOFF[league];
+    if (!cfg) return '';
+    return `
+      <div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:700;color:${LCOL[league]};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">${LNAME[league]}</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${lteams.map(t => {
+            const d = livePlayoff[t.id] || {};
+            const wins = toArray(d.wins).length ? toArray(d.wins) : Array(cfg.rounds).fill(0);
+            const eliminated = d.eliminated || false;
+            const pts = getPlayoffPts(t.id, league);
+            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${eliminated ? 'rgba(255,92,92,.05)' : 'var(--surface2)'};border:1px solid ${eliminated ? 'rgba(255,92,92,.25)' : 'var(--border)'};border-radius:8px;flex-wrap:wrap">
+              <!-- Team name + points -->
+              <div style="min-width:130px;flex-shrink:0">
+                <div style="font-size:13px;font-weight:600;${eliminated ? 'text-decoration:line-through;color:var(--muted)' : ''}">${t.city} ${t.name}</div>
+                <div style="font-size:11px;color:${pts > 0 ? 'var(--accent)' : 'var(--muted)'};margin-top:2px">${pts > 0 ? pts.toFixed(0) + ' pts' : '0 pts'}</div>
+              </div>
+              <!-- Round checkboxes -->
+              <div style="display:flex;flex-wrap:wrap;gap:8px;flex:1;align-items:center">
+                ${cfg.names.map((rname, ri) => `
+                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${wins[ri] ? 'var(--success)' : 'var(--muted)'};cursor:pointer;white-space:nowrap;padding:4px 8px;border-radius:6px;background:${wins[ri] ? 'rgba(60,232,154,.1)' : 'var(--surface)'};border:1px solid ${wins[ri] ? 'rgba(60,232,154,.3)' : 'var(--border)'}">
+                    <input type="checkbox" ${wins[ri] ? 'checked' : ''} style="accent-color:var(--success)"
+                      onchange="savePlayoffWin('${t.id}','${league}',${ri},this.checked);rerenderAfterSave()"/>
+                    ${rname}
+                  </label>`).join('')}
+              </div>
+              <!-- Eliminated toggle -->
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${eliminated ? 'var(--danger)' : 'var(--muted)'};cursor:pointer;padding:4px 10px;border-radius:6px;background:${eliminated ? 'rgba(255,92,92,.12)' : 'var(--surface)'};border:1px solid ${eliminated ? 'rgba(255,92,92,.3)' : 'var(--border)'};white-space:nowrap;flex-shrink:0">
+                <input type="checkbox" ${eliminated ? 'checked' : ''} style="accent-color:var(--danger)"
+                  onchange="savePlayoffElim('${t.id}','${league}',this.checked);rerenderAfterSave()"/>
+                ☠ Eliminated
+              </label>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // ══════════════════════════════════════════════════════
