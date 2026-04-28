@@ -831,6 +831,7 @@ function enterApp(code){
   if(!ME.isHost) document.getElementById('setup-readonly').style.display='block';
   renderPageNav();
   listenPlayoffScores();
+  listenGlobalPlayoffScores();
 
   // Firebase listener — react to all state changes
   db.ref('rooms/'+code).on('value', snap=>{
@@ -1278,6 +1279,28 @@ async function fetchPlayoffScoresFromWorker(league) {
   }
 }
 
+// Global playoff scores — shared across all drafts
+async function loadGlobalPlayoffScores() {
+  try {
+    const snap = await db.ref('playoffScores').get();
+    if (snap.exists()) {
+      Object.assign(livePlayoff, snap.val() || {});
+    }
+  } catch(e) {}
+}
+
+function listenGlobalPlayoffScores() {
+  db.ref('playoffScores').on('value', snap => {
+    if (snap.exists()) Object.assign(livePlayoff, snap.val() || {});
+    const sbTab = document.getElementById('tab-scoreboard');
+    if (sbTab && sbTab.style.display !== 'none') {
+      renderScoreboard();
+      renderFinalizedDrafts();
+      renderPlayoffAdminPanel();
+    }
+  });
+}
+
 // Load playoff results — try Worker first, fall back to Firebase manual entry
 async function loadPlayoffScores() {
   const sportLeagues = (ROOM.leagues || []).filter(l => l !== 'pga');
@@ -1288,30 +1311,28 @@ async function loadPlayoffScores() {
   );
   const anyWorkerSuccess = workerResults.some(Boolean);
 
-  // Always also load Firebase manual scores (they supplement/override Worker data)
-  try {
-    const snap = await db.ref('rooms/' + ME.roomCode + '/playoffScores').get();
-    if (snap.exists()) {
-      const fbData = snap.val() || {};
-      // Firebase manual entry takes precedence over Worker data
-      Object.assign(livePlayoff, fbData);
-    }
-  } catch(e) {}
+  // Load global playoff scores (manual entries shared across all drafts)
+  await loadGlobalPlayoffScores();
+
+  // Also load room-specific scores for backwards compat
+  if (ME.roomCode) {
+    try {
+      const snap = await db.ref('rooms/' + ME.roomCode + '/playoffScores').get();
+      if (snap.exists()) Object.assign(livePlayoff, snap.val() || {});
+    } catch(e) {}
+  }
 
   return anyWorkerSuccess;
 }
 
 // Listen for real-time Firebase playoff score updates (manual overrides)
 function listenPlayoffScores() {
+  // Listen globally first
+  listenGlobalPlayoffScores();
+  // Also listen to room-specific path for backwards compat
   if (!ME.roomCode) return;
   db.ref('rooms/' + ME.roomCode + '/playoffScores').on('value', snap => {
-    const fbData = snap.exists() ? (snap.val() || {}) : {};
-    // Merge Firebase on top of any live Worker data
-    Object.assign(livePlayoff, fbData);
-    if (document.getElementById('tab-scoreboard') &&
-        document.getElementById('tab-scoreboard').style.display !== 'none') {
-      renderScoreboard();
-    }
+    if (snap.exists()) Object.assign(livePlayoff, snap.val() || {});
   });
 }
 
@@ -2515,59 +2536,75 @@ async function renderRoomModal(bodyEl, roomCode) {
 // PLAYOFF SCORE ADMIN PANEL
 // ══════════════════════════════════════════════════════
 function renderPlayoffAdminPanel() {
-  // Open to all users — anyone can enter scores
-  const sportLeagues = (ROOM.leagues || []).filter(l => l !== 'pga');
-  if (!sportLeagues.length) return;
+  // Collect all drafted sport teams from BOTH active room AND finalized drafts
+  const allDraftedTeams = {}; // teamId -> { team, league, sources: [draftId] }
 
-  const draftedTeams = [];
+  // From active room
   toArray(ROOM.picks).forEach(pk => {
     if (pk && pk.team && pk.league && pk.league !== 'pga') {
-      if (!draftedTeams.find(t => t.id === pk.team.id)) {
-        draftedTeams.push({ ...pk.team, league: pk.league });
-      }
+      if (!allDraftedTeams[pk.team.id]) allDraftedTeams[pk.team.id] = { ...pk.team, league: pk.league, sources: [] };
+      allDraftedTeams[pk.team.id].sources.push('room:' + ME.roomCode);
     }
   });
-  if (!draftedTeams.length) return;
 
+  // From finalized drafts (loaded into window.finalizedDraftCache during renderFinalizedDrafts)
+  const fdCache = window.finalizedDraftCache || {};
+  Object.entries(fdCache).forEach(([draftId, draft]) => {
+    toArray(draft.picks).forEach(pk => {
+      if (pk && pk.team && pk.league && pk.league !== 'pga') {
+        if (!allDraftedTeams[pk.team.id]) allDraftedTeams[pk.team.id] = { ...pk.team, league: pk.league, sources: [] };
+        allDraftedTeams[pk.team.id].sources.push('draft:' + draftId);
+      }
+    });
+  });
+
+  const teams = Object.values(allDraftedTeams);
+  if (!teams.length) return;
+
+  // Find or create panel — place it after sb-hardcoded-drafts
   let panel = document.getElementById('playoff-admin-panel');
   if (!panel) {
     panel = document.createElement('div');
     panel.id = 'playoff-admin-panel';
-    const sbGrid = document.getElementById('sb-grid');
-    if (sbGrid && sbGrid.parentNode) sbGrid.parentNode.insertBefore(panel, sbGrid.nextSibling);
+    const anchor = document.getElementById('sb-hardcoded-drafts') || document.getElementById('sb-grid');
+    if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(panel, anchor.nextSibling);
   }
 
+  // Group by league
   const byLeague = {};
-  draftedTeams.forEach(t => {
+  teams.forEach(t => {
     if (!byLeague[t.league]) byLeague[t.league] = [];
-    byLeague[t.league].push(t);
+    if (!byLeague[t.league].find(x => x.id === t.id)) byLeague[t.league].push(t);
   });
+
+  if (!Object.keys(byLeague).length) return;
 
   panel.innerHTML = `
     <div style="margin-top:20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
       <button onclick="togglePlayoffAdmin()" style="width:100%;padding:12px 18px;background:var(--surface2);border:none;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;text-transform:uppercase;letter-spacing:.04em">
         <span>⚙ Edit Playoff Results</span>
-        <span id="playoff-admin-arrow">▼</span>
+        <span id="playoff-admin-arrow">${playoffAdminOpen ? '▲' : '▼'}</span>
       </button>
-      <div id="playoff-admin-body" style="display:none;padding:16px 18px">
-        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Check each round a team won and mark them eliminated when out. Updates instantly for everyone.</p>
-        ${Object.entries(byLeague).map(([league, teams]) => {
+      <div id="playoff-admin-body" style="display:${playoffAdminOpen ? 'block' : 'none'};padding:16px 18px">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Check each round a team won and mark them eliminated when out. Saves instantly for everyone.</p>
+        ${Object.entries(byLeague).map(([league, lteams]) => {
           const cfg = PLAYOFF[league];
+          if (!cfg) return '';
           return `<div style="margin-bottom:16px">
             <div style="font-size:11px;font-weight:700;color:${LCOL[league]};text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${LNAME[league]}</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
-              ${teams.map(t => {
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">
+              ${lteams.map(t => {
                 const d = livePlayoff[t.id] || {};
                 const wins = toArray(d.wins).length ? toArray(d.wins) : Array(cfg.rounds).fill(0);
                 const eliminated = d.eliminated || false;
-                return `<div style="background:var(--surface2);border:1px solid ${eliminated?'rgba(255,92,92,.3)':'var(--border)'};border-radius:8px;padding:10px 12px">
+                return `<div style="background:var(--surface2);border:1px solid ${eliminated ? 'rgba(255,92,92,.35)' : 'var(--border)'};border-radius:8px;padding:10px 12px">
                   <div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-                    <span style="${eliminated?'color:var(--muted);text-decoration:line-through':''}">${t.city} ${t.name}</span>
-                    ${eliminated?'<span style="font-size:10px;background:rgba(255,92,92,.15);color:var(--danger);padding:2px 7px;border-radius:10px;font-weight:700">OUT</span>':''}
+                    <span style="${eliminated ? 'color:var(--muted);text-decoration:line-through' : ''}">${t.city} ${t.name}</span>
+                    ${eliminated ? '<span style="font-size:10px;background:rgba(255,92,92,.15);color:var(--danger);padding:2px 7px;border-radius:10px;font-weight:700">OUT</span>' : ''}
                   </div>
                   <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
                     ${cfg.names.map((rname, ri) => `
-                      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);cursor:pointer">
+                      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:${wins[ri] ? 'var(--success)' : 'var(--muted)'};cursor:pointer">
                         <input type="checkbox" id="win-${t.id}-${ri}" ${wins[ri] ? 'checked' : ''}
                           onchange="savePlayoffWin('${t.id}','${league}',${ri},this.checked)"/>
                         ${rname}
@@ -2600,18 +2637,20 @@ async function savePlayoffWin(teamId, league, roundIndex, won) {
   const cfg = PLAYOFF[league];
   const current = livePlayoff[teamId] || { wins: Array(cfg.rounds).fill(0), eliminated: false };
   const wins = [...toArray(current.wins || Array(cfg.rounds).fill(0))];
-  // Ensure array is the right length
   while (wins.length < cfg.rounds) wins.push(0);
   wins[roundIndex] = won ? 1 : 0;
-  await db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ wins, league });
+  // Save to global playoffScores so all drafts share results
+  await db.ref('playoffScores/' + teamId).update({ wins, league });
+  // Also save to room for backwards compat
+  if (ME.roomCode) db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ wins, league }).catch(()=>{});
   showToast('Score saved!');
 }
 
 async function savePlayoffElim(teamId, league, eliminated) {
-  await db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ eliminated, league });
-  showToast(eliminated ? 'Team marked eliminated.' : 'Elimination removed.');
-  // Re-render the admin panel to update styling
-  setTimeout(renderPlayoffAdminPanel, 300);
+  await db.ref('playoffScores/' + teamId).update({ eliminated, league });
+  if (ME.roomCode) db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ eliminated, league }).catch(()=>{});
+  showToast(eliminated ? '☠ Team marked eliminated.' : 'Elimination removed.');
+  setTimeout(() => { loadGlobalPlayoffScores().then(renderPlayoffAdminPanel); }, 400);
 }
 
 // ══════════════════════════════════════════════════════
@@ -2723,9 +2762,15 @@ async function renderFinalizedDrafts() {
   const el = document.getElementById('sb-finalized-drafts');
   if (!el) return;
 
+  // Also load global playoff scores so finalized cards show current data
+  await loadGlobalPlayoffScores();
+
   try {
     const snap = await db.ref('finalizedDrafts').get();
     if (!snap.exists()) { el.innerHTML = ''; return; }
+
+    // Cache for admin panel
+    window.finalizedDraftCache = snap.val() || {};
 
     const drafts = Object.values(snap.val() || {})
       .filter(d => d.status !== 'closed')
