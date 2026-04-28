@@ -2573,10 +2573,33 @@ function rerenderAfterSave() {
   }, 400);
 }
 
-function openScoreEditModal() {
+async function openScoreEditModal() {
   const modal = document.getElementById('score-edit-modal');
-  if (!modal) return;
+  if (!modal) { console.error('score-edit-modal not found'); return; }
   modal.style.display = 'flex';
+
+  const body = document.getElementById('score-edit-modal-body');
+  if (body) body.innerHTML = '<div class="empty" style="padding:32px">Loading teams...</div>';
+
+  // Load fresh global playoff scores
+  await loadGlobalPlayoffScores();
+
+  // Load finalized drafts if not cached
+  if (!window.finalizedDraftCache || !Object.keys(window.finalizedDraftCache).length) {
+    try {
+      const snap = await db.ref('finalizedDrafts').get();
+      window.finalizedDraftCache = snap.exists() ? (snap.val() || {}) : {};
+    } catch(e) { window.finalizedDraftCache = {}; }
+  }
+
+  // Load active room picks if missing
+  if (ME.roomCode && (!ROOM.picks || !toArray(ROOM.picks).length)) {
+    try {
+      const snap = await db.ref('rooms/' + ME.roomCode).get();
+      if (snap.exists()) Object.assign(ROOM, snap.val());
+    } catch(e) {}
+  }
+
   renderScoreEditModalBody();
 }
 
@@ -2594,12 +2617,14 @@ function renderScoreEditModalBody() {
   // Gather all unique sport teams from active room + finalized drafts
   const allTeams = {}; // id -> {team, league}
 
+  // From active room picks
   toArray(ROOM.picks).forEach(pk => {
     if (pk && pk.team && pk.league && pk.league !== 'pga') {
       allTeams[pk.team.id] = { team: pk.team, league: pk.league };
     }
   });
 
+  // From finalized drafts
   const fdCache = window.finalizedDraftCache || {};
   Object.values(fdCache).forEach(draft => {
     toArray(draft.picks).forEach(pk => {
@@ -2609,9 +2634,20 @@ function renderScoreEditModalBody() {
     });
   });
 
+  // Fallback: if still no teams, show ALL playoff teams for all active leagues
+  if (!Object.keys(allTeams).length) {
+    const leaguesToShow = (ROOM.leagues || []).filter(l => l !== 'pga');
+    const fallbackLeagues = leaguesToShow.length ? leaguesToShow : ['nba','nhl','nfl','cbb'];
+    fallbackLeagues.forEach(league => {
+      (TEAMS[league] || []).forEach(t => {
+        allTeams[t.id] = { team: t, league };
+      });
+    });
+  }
+
   const teams = Object.values(allTeams);
   if (!teams.length) {
-    body.innerHTML = '<div class="empty">No sport teams found in any draft. Complete a draft first.</div>';
+    body.innerHTML = '<div class="empty">No sport teams found.</div>';
     return;
   }
 
