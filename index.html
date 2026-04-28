@@ -474,6 +474,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
         <div class="sec-title" id="sb-title">Scoreboard</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;color:var(--muted)" id="sb-updated"></span>
+          <button class="btn btn-ghost btn-sm" id="edit-scores-btn" onclick="toggleScoreEditMode()" style="border-color:rgba(60,232,255,.3);color:var(--accent2)">✏ Edit Scores</button>
           <button class="btn btn-ghost btn-sm" id="finalize-draft-btn" onclick="finalizeDraft()" style="display:none;border-color:rgba(60,232,154,.4);color:var(--success)">✓ Finalize Draft</button>
           <button class="btn btn-ghost btn-sm" id="archive-event-btn" onclick="archiveCurrentEvent()" style="display:none;border-color:rgba(255,92,92,.4);color:var(--danger)">✕ Remove Event</button>
           <button class="btn btn-ghost btn-sm" id="refresh-btn" onclick="triggerRefresh()">⟳ Refresh</button>
@@ -1446,22 +1447,38 @@ function renderScoreboard(){
             const pts=getPlayoffPts(pk.team?.id,pk.league);
             const rnd=wins.filter(w=>w>0).length;
             const eliminated = d?.eliminated || false;
+            const tid = pk.team.id.replace(/[^a-zA-Z0-9]/g,'-');
             return `<div class="sb-row" style="${eliminated?'opacity:.7':''}">
               <div style="flex:1">
                 <div class="sb-tname" style="${eliminated?'text-decoration:line-through;color:var(--muted)':''}">${pk.team.city} ${pk.team.name}</div>
-                <div class="sb-detail" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px">
+                <div class="sb-detail" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:3px">
                   ${eliminated
                     ? `<span style="background:rgba(255,92,92,.15);color:var(--danger);font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">☠ Eliminated</span>
                        ${rnd>0?`<span style="color:var(--muted);font-size:10px">${rnd} win${rnd!==1?'s':''}</span>`:''}`
                     : !hasData
-                    ? '<span style="color:var(--muted);font-size:11px">Playoffs not started</span>'
+                    ? '<span style="color:var(--muted);font-size:11px">Not started</span>'
                     : `<span style="color:var(--muted);font-size:11px">${rnd>0?cfg.names[rnd-1]+' ✓':'Round 1'}</span>`}
                   ${hasData&&!eliminated ? `<span style="display:inline-flex;gap:2px;vertical-align:middle">
-                    ${(cfg?.names||[]).map((_,ri)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${wins[ri]?'var(--success)':'var(--border)'}"></span>`).join('')}
+                    ${cfg.names.map((_,ri)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${wins[ri]?'var(--success)':'var(--border)'}"></span>`).join('')}
                   </span>` : ''}
                 </div>
+                <!-- INLINE EDIT CONTROLS — shown in edit mode -->
+                <div class="sb-edit-controls" id="edit-${tid}" style="display:none;margin-top:8px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+                  <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Round Wins</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                    ${cfg.names.map((rname,ri)=>`
+                      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:${wins[ri]?'var(--success)':'var(--muted)'};cursor:pointer;white-space:nowrap">
+                        <input type="checkbox" ${wins[ri]?'checked':''} onchange="savePlayoffWin('${pk.team.id}','${pk.league}',${ri},this.checked);rerenderAfterSave()"/>
+                        ${rname}
+                      </label>`).join('')}
+                    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--danger);cursor:pointer;padding-left:8px;border-left:1px solid var(--border);white-space:nowrap">
+                      <input type="checkbox" ${eliminated?'checked':''} onchange="savePlayoffElim('${pk.team.id}','${pk.league}',this.checked);rerenderAfterSave()"/>
+                      Eliminated
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div style="text-align:right">
+              <div style="text-align:right;flex-shrink:0">
                 <div class="sb-score" style="color:${eliminated?'var(--danger)':pts>0?'var(--accent)':'var(--muted)'}">${eliminated&&pts===0?'OUT':pts>0?pts.toFixed(0):'—'}</div>
                 <div style="font-size:10px;color:var(--muted)">${LNAME[pk.league]}</div>
               </div>
@@ -1499,8 +1516,8 @@ function renderScoreboard(){
     banner.classList.remove('show');
   }
 
-  // Render playoff admin panel — open to all users
-  renderPlayoffAdminPanel();
+  // Admin panel now replaced by inline edit mode (Edit Scores button)
+  // renderPlayoffAdminPanel() kept for backwards compat but not called in main render
   // Update finalize button state
   updateFinalizeBtn();
   // Show hint banner when all picks are in and not yet finalized
@@ -2533,6 +2550,40 @@ async function renderRoomModal(bodyEl, roomCode) {
 }
 
 // ══════════════════════════════════════════════════════
+// SCORE EDIT MODE
+// ══════════════════════════════════════════════════════
+let scoreEditMode = false;
+
+function toggleScoreEditMode() {
+  scoreEditMode = !scoreEditMode;
+  const btn = document.getElementById('edit-scores-btn');
+  if (btn) {
+    btn.textContent = scoreEditMode ? '✓ Done Editing' : '✏ Edit Scores';
+    btn.style.background = scoreEditMode ? 'rgba(60,232,255,.15)' : '';
+    btn.style.borderColor = scoreEditMode ? 'var(--accent2)' : 'rgba(60,232,255,.3)';
+  }
+  // Show/hide all inline edit control panels
+  document.querySelectorAll('.sb-edit-controls').forEach(el => {
+    el.style.display = scoreEditMode ? 'block' : 'none';
+  });
+}
+
+function rerenderAfterSave() {
+  // Re-render scoreboard after a short delay to reflect new scores
+  setTimeout(() => {
+    loadGlobalPlayoffScores().then(() => {
+      renderScoreboard();
+      // Re-apply edit mode visibility after re-render
+      if (scoreEditMode) {
+        document.querySelectorAll('.sb-edit-controls').forEach(el => {
+          el.style.display = 'block';
+        });
+      }
+    });
+  }, 500);
+}
+
+// ══════════════════════════════════════════════════════
 // PLAYOFF SCORE ADMIN PANEL
 // ══════════════════════════════════════════════════════
 function renderPlayoffAdminPanel() {
@@ -2650,7 +2701,6 @@ async function savePlayoffElim(teamId, league, eliminated) {
   await db.ref('playoffScores/' + teamId).update({ eliminated, league });
   if (ME.roomCode) db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ eliminated, league }).catch(()=>{});
   showToast(eliminated ? '☠ Team marked eliminated.' : 'Elimination removed.');
-  setTimeout(() => { loadGlobalPlayoffScores().then(renderPlayoffAdminPanel); }, 400);
 }
 
 // ══════════════════════════════════════════════════════
