@@ -1200,32 +1200,43 @@ function pgaFallback(){
 // Maps ESPN team abbreviations/names to our internal team IDs
 // Key = lowercase ESPN abbr or name, Value = our team id
 const ESPN_TEAM_MAP = {
-  // NBA
-  'det':'det','pistons':'det','bos':'bos','celtics':'bos',
-  'nyk':'nyk','knicks':'nyk','cle':'cle','cavaliers':'cle',
-  'tor':'tor','raptors':'tor','atl':'atl','hawks':'atl',
-  'phi':'phi','76ers':'phi','sixers':'phi',
-  'cha':'cha','hornets':'cha','orl':'orl','magic':'orl',
-  'okc':'okc','thunder':'okc','sas':'sas','spurs':'sas',
-  'den':'den','nuggets':'den','lal':'lal','lakers':'lal',
-  'hou':'hou','rockets':'hou','min':'min','timberwolves':'min',
-  'por':'por','trail blazers':'por','portland':'por',
-  'phx':'phx','suns':'phx','gsw':'gsw','warriors':'gsw',
-  'golden state':'gsw',
-  // NHL
-  'buf':'buf-h','sabres':'buf-h','tbl':'tbl-h','lightning':'tbl-h',
-  'mtl':'mtl-h','canadiens':'mtl-h','car':'car-h','hurricanes':'car-h',
-  'pit':'pit-h','penguins':'pit-h','phi':'phi-h','flyers':'phi-h',
-  'bos':'bos-h','bruins':'bos-h','ott':'ott-h','senators':'ott-h',
-  'col':'col-h','avalanche':'col-h','dal':'dal-h','stars':'dal-h',
-  'min':'min-h','wild':'min-h','vgk':'vgk-h','golden knights':'vgk-h',
-  'edm':'edm-h','oilers':'edm-h','ana':'ana-h','ducks':'ana-h',
+  // NBA 2026 Playoffs — ESPN uses 2-3 letter abbreviations
+  'det':'det','pistons':'det','detroit':'det',
+  'bos':'bos','celtics':'bos','boston celtics':'bos',
+  'nyk':'nyk','knicks':'nyk','new york knicks':'nyk',
+  'cle':'cle','cavaliers':'cle','cleveland':'cle',
+  'tor':'tor','raptors':'tor','toronto':'tor',
+  'atl':'atl','hawks':'atl','atlanta':'atl',
+  'phi':'phi','76ers':'phi','sixers':'phi','philadelphia 76ers':'phi',
+  'cha':'cha','hornets':'cha','charlotte':'cha',
+  'orl':'orl','magic':'orl','orlando':'orl',
+  'okc':'okc','thunder':'okc','oklahoma city':'okc',
+  'sa':'sas','sas':'sas','spurs':'sas','san antonio':'sas',
+  'den':'den','nuggets':'den','denver':'den',
+  'lal':'lal','lakers':'lal','los angeles lakers':'lal',
+  'hou':'hou','rockets':'hou','houston':'hou',
+  'min':'min','timberwolves':'min','minnesota timberwolves':'min',
+  'por':'por','trail blazers':'por','portland':'por','blazers':'por',
+  'phx':'phx','suns':'phx','phoenix':'phx',
+  'gs':'gsw','gsw':'gsw','warriors':'gsw','golden state':'gsw',
+  // NHL 2026 Playoffs
+  'buf':'buf-h','sabres':'buf-h','buffalo':'buf-h',
+  'tb':'tbl-h','tbl':'tbl-h','lightning':'tbl-h','tampa bay':'tbl-h',
+  'mtl':'mtl-h','canadiens':'mtl-h','montreal':'mtl-h',
+  'car':'car-h','hurricanes':'car-h','carolina':'car-h',
+  'pit':'pit-h','penguins':'pit-h','pittsburgh':'pit-h',
+  'phi-h':'phi-h','flyers':'phi-h','philadelphia flyers':'phi-h',
+  'bos-h':'bos-h','bruins':'bos-h','boston bruins':'bos-h',
+  'ott':'ott-h','senators':'ott-h','ottawa':'ott-h',
+  'col':'col-h','avalanche':'col-h','colorado':'col-h',
+  'dal':'dal-h','stars':'dal-h','dallas':'dal-h',
+  'min-h':'min-h','wild':'min-h','minnesota wild':'min-h',
+  'vgk':'vgk-h','golden knights':'vgk-h','vegas':'vgk-h',
+  'edm':'edm-h','oilers':'edm-h','edmonton':'edm-h',
+  'ana':'ana-h','ducks':'ana-h','anaheim':'ana-h',
   'uta':'uta-h','mammoth':'uta-h','utah':'uta-h',
-  'lak':'lak-h','kings':'lak-h','los angeles':'lak-h',
-  // NFL (future)
-  'kc':'kc-f','chiefs':'kc-f','buf':'buf-f','bills':'buf-f',
-  // CBB handled differently (team names vary too much)
-};
+  'la':'lak-h','lak':'lak-h','kings':'lak-h','los angeles kings':'lak-h',
+}
 
 function mapESPNTeamToId(abbr, name) {
   const a = (abbr || '').toLowerCase().trim();
@@ -1408,28 +1419,29 @@ function renderScoreboard(){
             </div>`;
           } else {
             const d=livePlayoff[pk.team?.id];
-            const hasData = d && d.wins && d.wins.some(w=>w>0);
-            const wins = d?.wins || [];
+            const wins = toArray(d?.wins||[]);
+            const hasData = wins.some(w=>w>0) || d?.eliminated;
             const cfg=PLAYOFF[pk.league];
             const pts=getPlayoffPts(pk.team?.id,pk.league);
             const rnd=wins.filter(w=>w>0).length;
             const eliminated = d?.eliminated || false;
-            return `<div class="sb-row">
-              <div>
-                <div class="sb-tname">${pk.team.city} ${pk.team.name}</div>
-                <div class="sb-detail">
-                  ${!hasData
-                    ? '<span style="color:var(--muted)">Playoffs not started</span>'
-                    : eliminated
-                    ? `<span style="color:var(--danger)">Eliminated · ${rnd} win${rnd!==1?'s':''}</span>`
-                    : rnd>0 ? cfg.names[rnd-1]+' ✓' : 'Round 1'}
-                  ${hasData ? `· <span style="display:inline-flex;gap:2px;vertical-align:middle">
+            return `<div class="sb-row" style="${eliminated?'opacity:.7':''}">
+              <div style="flex:1">
+                <div class="sb-tname" style="${eliminated?'text-decoration:line-through;color:var(--muted)':''}">${pk.team.city} ${pk.team.name}</div>
+                <div class="sb-detail" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px">
+                  ${eliminated
+                    ? `<span style="background:rgba(255,92,92,.15);color:var(--danger);font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">☠ Eliminated</span>
+                       ${rnd>0?`<span style="color:var(--muted);font-size:10px">${rnd} win${rnd!==1?'s':''}</span>`:''}`
+                    : !hasData
+                    ? '<span style="color:var(--muted);font-size:11px">Playoffs not started</span>'
+                    : `<span style="color:var(--muted);font-size:11px">${rnd>0?cfg.names[rnd-1]+' ✓':'Round 1'}</span>`}
+                  ${hasData&&!eliminated ? `<span style="display:inline-flex;gap:2px;vertical-align:middle">
                     ${(cfg?.names||[]).map((_,ri)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${wins[ri]?'var(--success)':'var(--border)'}"></span>`).join('')}
                   </span>` : ''}
                 </div>
               </div>
               <div style="text-align:right">
-                <div class="sb-score" style="color:${pts>0?'var(--accent)':'var(--muted)'}">${pts>0?pts.toFixed(0):'—'}</div>
+                <div class="sb-score" style="color:${eliminated?'var(--danger)':pts>0?'var(--accent)':'var(--muted)'}">${eliminated&&pts===0?'OUT':pts>0?pts.toFixed(0):'—'}</div>
                 <div style="font-size:10px;color:var(--muted)">${LNAME[pk.league]}</div>
               </div>
             </div>`;
@@ -1466,8 +1478,8 @@ function renderScoreboard(){
     banner.classList.remove('show');
   }
 
-  // Render playoff admin panel for host
-  if (ME.isHost) renderPlayoffAdminPanel();
+  // Render playoff admin panel — open to all users
+  renderPlayoffAdminPanel();
   // Update finalize button state
   updateFinalizeBtn();
   // Show hint banner when all picks are in and not yet finalized
@@ -1876,6 +1888,15 @@ function findGolferScore(espnSearch) {
 
   // 4. For Firebase scores (manual entry), keys ARE the espnSearch values — already handled above
   return null;
+}
+
+// Debug — call getPlayoffDebugInfo('nba') in browser console to inspect Worker response
+async function getPlayoffDebugInfo(league) {
+  const resp = await fetch(`${WORKER_URL}/?type=playoffs&league=${league}&debug=1`);
+  const data = await resp.json();
+  console.log('Playoff debug:', data);
+  console.log('livePlayoff state:', livePlayoff);
+  return data;
 }
 
 // Debug helper — call getMastersDebugInfo() in browser console to see what's happening
@@ -2494,16 +2515,13 @@ async function renderRoomModal(bodyEl, roomCode) {
 // PLAYOFF SCORE ADMIN PANEL
 // ══════════════════════════════════════════════════════
 function renderPlayoffAdminPanel() {
-  if (!ME.isHost) return;
-
-  // Only show if current room has sport leagues
+  // Open to all users — anyone can enter scores
   const sportLeagues = (ROOM.leagues || []).filter(l => l !== 'pga');
   if (!sportLeagues.length) return;
 
-  // Get all unique drafted sport teams
   const draftedTeams = [];
-  (ROOM.picks || []).forEach(pk => {
-    if (pk.team && pk.league && pk.league !== 'pga') {
+  toArray(ROOM.picks).forEach(pk => {
+    if (pk && pk.team && pk.league && pk.league !== 'pga') {
       if (!draftedTeams.find(t => t.id === pk.team.id)) {
         draftedTeams.push({ ...pk.team, league: pk.league });
       }
@@ -2511,7 +2529,6 @@ function renderPlayoffAdminPanel() {
   });
   if (!draftedTeams.length) return;
 
-  // Find or create admin panel below sb-grid
   let panel = document.getElementById('playoff-admin-panel');
   if (!panel) {
     panel = document.createElement('div');
@@ -2520,7 +2537,6 @@ function renderPlayoffAdminPanel() {
     if (sbGrid && sbGrid.parentNode) sbGrid.parentNode.insertBefore(panel, sbGrid.nextSibling);
   }
 
-  // Group teams by league
   const byLeague = {};
   draftedTeams.forEach(t => {
     if (!byLeague[t.league]) byLeague[t.league] = [];
@@ -2530,11 +2546,11 @@ function renderPlayoffAdminPanel() {
   panel.innerHTML = `
     <div style="margin-top:20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
       <button onclick="togglePlayoffAdmin()" style="width:100%;padding:12px 18px;background:var(--surface2);border:none;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between;text-transform:uppercase;letter-spacing:.04em">
-        <span>⚙ Enter Playoff Results (Host Only)</span>
+        <span>⚙ Edit Playoff Results</span>
         <span id="playoff-admin-arrow">▼</span>
       </button>
       <div id="playoff-admin-body" style="display:none;padding:16px 18px">
-        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">For each team, enter how many rounds they won and check "Eliminated" once they're out. Saves instantly for all users.</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Check each round a team won and mark them eliminated when out. Updates instantly for everyone.</p>
         ${Object.entries(byLeague).map(([league, teams]) => {
           const cfg = PLAYOFF[league];
           return `<div style="margin-bottom:16px">
@@ -2542,10 +2558,13 @@ function renderPlayoffAdminPanel() {
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">
               ${teams.map(t => {
                 const d = livePlayoff[t.id] || {};
-                const wins = d.wins || Array(cfg.rounds).fill(0);
+                const wins = toArray(d.wins).length ? toArray(d.wins) : Array(cfg.rounds).fill(0);
                 const eliminated = d.eliminated || false;
-                return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">
-                  <div style="font-size:13px;font-weight:600;margin-bottom:8px">${t.city} ${t.name}</div>
+                return `<div style="background:var(--surface2);border:1px solid ${eliminated?'rgba(255,92,92,.3)':'var(--border)'};border-radius:8px;padding:10px 12px">
+                  <div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+                    <span style="${eliminated?'color:var(--muted);text-decoration:line-through':''}">${t.city} ${t.name}</span>
+                    ${eliminated?'<span style="font-size:10px;background:rgba(255,92,92,.15);color:var(--danger);padding:2px 7px;border-radius:10px;font-weight:700">OUT</span>':''}
+                  </div>
                   <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
                     ${cfg.names.map((rname, ri) => `
                       <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);cursor:pointer">
@@ -2580,13 +2599,77 @@ function togglePlayoffAdmin() {
 async function savePlayoffWin(teamId, league, roundIndex, won) {
   const cfg = PLAYOFF[league];
   const current = livePlayoff[teamId] || { wins: Array(cfg.rounds).fill(0), eliminated: false };
-  const wins = [...(current.wins || Array(cfg.rounds).fill(0))];
+  const wins = [...toArray(current.wins || Array(cfg.rounds).fill(0))];
+  // Ensure array is the right length
+  while (wins.length < cfg.rounds) wins.push(0);
   wins[roundIndex] = won ? 1 : 0;
   await db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ wins, league });
+  showToast('Score saved!');
 }
 
 async function savePlayoffElim(teamId, league, eliminated) {
   await db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ eliminated, league });
+  showToast(eliminated ? 'Team marked eliminated.' : 'Elimination removed.');
+  // Re-render the admin panel to update styling
+  setTimeout(renderPlayoffAdminPanel, 300);
+}
+
+// ══════════════════════════════════════════════════════
+// ONE-TIME FIXES
+// ══════════════════════════════════════════════════════
+// Called from browser console: fixLukasPick()
+async function fixLukasPick() {
+  // Find any finalized draft that has Charlotte Hornets for Lukas and swap to Orlando Magic
+  try {
+    const snap = await db.ref('finalizedDrafts').get();
+    if (!snap.exists()) { console.log('No finalized drafts found'); return; }
+    const drafts = snap.val();
+    let fixed = 0;
+    for (const [draftId, draft] of Object.entries(drafts)) {
+      const picks = toArray(draft.picks);
+      let changed = false;
+      picks.forEach((pk, i) => {
+        if (pk && pk.participant === 'Lukas' && pk.team && pk.team.id === 'cha') {
+          picks[i] = {
+            ...pk,
+            team: { id: 'orl', name: 'Magic', city: 'Orlando' },
+            league: 'nba'
+          };
+          changed = true;
+          console.log(`Fixed pick in draft ${draftId}: Charlotte Hornets → Orlando Magic for Lukas`);
+        }
+      });
+      if (changed) {
+        await db.ref('finalizedDrafts/' + draftId + '/picks').set(picks);
+        fixed++;
+      }
+    }
+    // Also fix in active room picks
+    if (ME.roomCode) {
+      const roomSnap = await db.ref('rooms/' + ME.roomCode + '/picks').get();
+      if (roomSnap.exists()) {
+        const roomPicks = toArray(roomSnap.val());
+        let roomChanged = false;
+        roomPicks.forEach((pk, i) => {
+          if (pk && pk.participant === 'Lukas' && pk.team && pk.team.id === 'cha') {
+            roomPicks[i] = { ...pk, team: { id: 'orl', name: 'Magic', city: 'Orlando' }, league: 'nba' };
+            roomChanged = true;
+          }
+        });
+        if (roomChanged) {
+          await db.ref('rooms/' + ME.roomCode + '/picks').set(roomPicks);
+          console.log('Fixed room picks too');
+          fixed++;
+        }
+      }
+    }
+    showToast(fixed > 0 ? `Fixed ${fixed} draft(s)!` : 'No picks needed fixing.');
+    console.log('Fix complete. Drafts updated:', fixed);
+    renderScoreboard();
+    renderFinalizedDrafts();
+  } catch(e) {
+    console.error('Fix failed:', e);
+  }
 }
 
 // ══════════════════════════════════════════════════════
