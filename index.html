@@ -1361,6 +1361,8 @@ async function triggerRefresh(){
   const hasSports=(ROOM.leagues||[]).some(l=>l!=='pga');
   let pgaOk=false, playoffOk=false;
   if(hasPGA){ pgaOk=await fetchPGAScores(); if(!pgaOk) pgaFallback(); }
+  // Always load global playoff scores regardless of current room leagues
+  await loadGlobalPlayoffScores();
   if(hasSports){ playoffOk=await loadPlayoffScores(); }
   fetching=false;
   if(btn) btn.textContent='⟳ Refresh';
@@ -1371,7 +1373,7 @@ async function triggerRefresh(){
     (sources.length?sources.join(' · ')+' · ':'')+new Date().toLocaleTimeString();
   renderScoreboard();
   renderHardcodedDrafts();
-  renderFinalizedDrafts();
+  await renderFinalizedDrafts();
 }
 
 // ══════════════════════════════════════════════════════
@@ -2222,26 +2224,35 @@ async function archiveCurrentEvent() {
 // ══════════════════════════════════════════════════════
 let isViewOnly = false;
 
-function enterViewOnly() {
+async function enterViewOnly() {
   isViewOnly = true;
   ME = { name: 'Viewer', roomCode: '', isHost: false };
   document.getElementById('lobby').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  // Hide room badge and playing-as, show view-only badge
   document.getElementById('nav-code').parentElement.style.display = 'none';
   document.getElementById('nav-myname-wrap').style.display = 'none';
   document.getElementById('nav-viewonly-badge').style.display = 'flex';
-  // Hide draft/setup tabs — view only gets scoring, scoreboard, alltime, upcoming
   document.getElementById('tab-setup').style.display = 'none';
-  // Go straight to scoreboard
-  gotoTab('scoreboard');
-  // Hide setup/draft from nav
   document.querySelectorAll('.nav-tab').forEach((el, i) => {
     const t = TAB_ORDER[i];
     if (t === 'setup' || t === 'draft') el.style.display = 'none';
   });
-  // Start listening for masters scores
+  // Switch to scoreboard tab
+  TAB_ORDER.forEach(x => {
+    const el = document.getElementById('tab-'+x);
+    if (el) el.style.display = x === 'scoreboard' ? 'block' : 'none';
+  });
+  document.querySelectorAll('.nav-tab').forEach((el,i) => {
+    el.classList.toggle('active', TAB_ORDER[i] === 'scoreboard');
+  });
+  renderPageNav();
   listenMastersScores();
+  listenGlobalPlayoffScores();
+  // Load and render finalized drafts explicitly
+  await loadGlobalPlayoffScores();
+  renderScoreboard();
+  renderHardcodedDrafts();
+  await renderFinalizedDrafts();
   renderAllTime();
 }
 
@@ -2913,11 +2924,34 @@ async function finalizeDraft() {
 }
 
 async function closeFinalizedDraft(draftId) {
-  if (!ME.isHost) return;
-  if (!confirm('Remove this draft from the scoreboard? Scores and All Time results are not affected.')) return;
+  if (!ME.isHost) { showToast('Only the host can remove drafts.'); return; }
+  if (!confirm('Remove this draft from the scoreboard? You can restore it later. Scores and All Time results are not affected.')) return;
   await db.ref('finalizedDrafts/' + draftId + '/status').set('closed');
   renderFinalizedDrafts();
-  showToast('Draft removed from scoreboard.');
+  showToast('Draft hidden from scoreboard.');
+}
+
+// Restore a closed draft — callable from browser console: restoreDraft('roomCode')
+async function restoreDraft(draftId) {
+  if (!draftId) {
+    // Restore ALL closed drafts
+    const snap = await db.ref('finalizedDrafts').get();
+    if (!snap.exists()) { console.log('No drafts found'); return; }
+    const all = snap.val();
+    let count = 0;
+    for (const [id, d] of Object.entries(all)) {
+      if (d.status === 'closed') {
+        await db.ref('finalizedDrafts/' + id + '/status').set('active');
+        console.log('Restored:', d.draftName, id);
+        count++;
+      }
+    }
+    showToast(count > 0 ? `Restored ${count} draft(s)!` : 'No closed drafts found.');
+  } else {
+    await db.ref('finalizedDrafts/' + draftId + '/status').set('active');
+    showToast('Draft restored!');
+  }
+  await renderFinalizedDrafts();
 }
 
 // Track which finalized draft cards are expanded
@@ -2937,9 +2971,23 @@ async function renderFinalizedDrafts() {
     // Cache for admin panel
     window.finalizedDraftCache = snap.val() || {};
 
-    const drafts = Object.values(snap.val() || {})
+    const allDrafts = Object.values(snap.val() || {});
+    const drafts = allDrafts
       .filter(d => d.status !== 'closed')
       .sort((a, b) => (b.finalizedAt || 0) - (a.finalizedAt || 0));
+    const closedDrafts = allDrafts.filter(d => d.status === 'closed');
+
+    if (!drafts.length && !closedDrafts.length) { el.innerHTML = ''; return; }
+
+    // If all drafts are closed but some exist, auto-restore them
+    if (!drafts.length && closedDrafts.length) {
+      console.warn('All drafts are closed — restoring them');
+      for (const d of closedDrafts) {
+        await db.ref('finalizedDrafts/' + d.id + '/status').set('active');
+      }
+      closedDrafts.forEach(d => d.status = 'active');
+      drafts.push(...closedDrafts);
+    }
 
     if (!drafts.length) { el.innerHTML = ''; return; }
 
@@ -3075,11 +3123,19 @@ setInterval(()=>{
       ME={name:s.name,roomCode:s.roomCode,isHost:s.isHost};
       enterApp(s.roomCode);
       listenMastersScores();
+      listenGlobalPlayoffScores();
       return;
     }
   }
+  // Session expired or no session — clear and show lobby
+  // But pre-load finalized drafts so they appear instantly after entering
   clearSession();
   listenMastersScores();
+  // Pre-fetch finalized drafts into cache for faster load after login
+  try {
+    const fdSnap = await db.ref('finalizedDrafts').get();
+    window.finalizedDraftCache = fdSnap.exists() ? (fdSnap.val() || {}) : {};
+  } catch(e) {}
 })();
 </script>
 </body>
