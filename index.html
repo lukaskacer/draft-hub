@@ -3215,8 +3215,20 @@ async function renderFinalizedDrafts() {
   const el = document.getElementById('sb-finalized-drafts');
   if (!el) return;
 
-  // Also load global playoff scores so finalized cards show current data
+  // Always fresh-load both playoff scores AND PGA scores from Firebase
   await loadGlobalPlayoffScores();
+
+  // Fresh-load PGA/golf scores into liveScores
+  try {
+    const pgaSnap = await db.ref('masters2026scores').get();
+    if (pgaSnap.exists()) {
+      const pgaData = pgaSnap.val() || {};
+      Object.entries(pgaData).forEach(([id, sc]) => {
+        liveScores[id] = { toPar: sc.toPar, position: sc.position || '—', cut: sc.cut || false, played: sc.toPar != null ? 4 : 0 };
+        mastersScoreCache[id] = sc;
+      });
+    }
+  } catch(e) {}
 
   try {
     const snap = await db.ref('finalizedDrafts').get();
@@ -3306,7 +3318,7 @@ async function renderFinalizedDrafts() {
                 <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:4px">${rankEmoji} ${o.participant}</div>
                 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:${o.pp > 0 || o.pc > 0 ? 'var(--accent)' : 'var(--muted)'}">
                   ${hasSports ? o.pp.toFixed(0) + '<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">pts</span>' : ''}
-                  ${hasPGA && o.pc > 0 ? o.str + '<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">str</span>' : ''}
+                  ${hasPGA && o.pc > 0 ? (()=>{const tp=o.str;const s=tp===0?'E':tp>0?'+'+tp:''+tp;return s+'<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">to par</span>';})() : ''}
                   ${!hasSports && (!hasPGA || o.pc === 0) ? '—' : ''}
                 </div>
                 <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:3px">
@@ -3315,14 +3327,21 @@ async function renderFinalizedDrafts() {
                     const d = livePlayoff[pk.team?.id];
                     const wins = d ? toArray(d.wins).filter(w => w > 0).length : 0;
                     const elim = d?.eliminated;
-                    const sc = pk.league === 'pga' ? (liveScores[pk.team?.id] || mastersScoreCache[pk.team?.id] || {}) : null;
-                    const label = pk.league === 'pga' ? pk.team.name.split(' ').pop()
+                    // For PGA: check both liveScores and mastersScoreCache
+                    const sc = pk.league === 'pga'
+                      ? (liveScores[pk.team?.id] || mastersScoreCache[pk.team?.id] || {})
+                      : null;
+                    const label = pk.league === 'pga'
+                      ? pk.team.name.split(' ').pop()
                       : (pk.team.city + ' ' + pk.team.name).replace('LA ', '').replace('New York ', 'NY ');
+                    // For PGA apply cut penalty for display
+                    const rawTp = sc?.toPar;
+                    const effectiveTp = rawTp != null ? (sc?.cut ? rawTp + 6 : rawTp) : null;
                     const score = pk.league === 'pga'
-                      ? (sc?.toPar != null ? (sc.toPar === 0 ? 'E' : (sc.toPar > 0 ? '+' : '') + sc.toPar) : '—')
+                      ? (effectiveTp != null ? (effectiveTp === 0 ? 'E' : (effectiveTp > 0 ? '+' : '') + effectiveTp) : '—')
                       : (wins > 0 ? wins + 'W' : '—');
                     const col = pk.league === 'pga'
-                      ? (sc?.toPar != null ? (sc.toPar < 0 ? 'var(--success)' : sc.toPar > 0 ? 'var(--danger)' : 'var(--muted)') : 'var(--muted)')
+                      ? (effectiveTp != null ? (effectiveTp < 0 ? 'var(--success)' : effectiveTp > 0 ? 'var(--danger)' : 'var(--muted)') : 'var(--muted)')
                       : (elim ? 'var(--danger)' : wins > 0 ? 'var(--success)' : 'var(--muted)');
                     return `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border);display:flex;gap:3px;align-items:center">
                       ${label}
