@@ -758,6 +758,7 @@ const TEAMS={
     {id:'snedeker',     name:'Brandt Snedeker'},
     {id:'yellamaraju',  name:'Sudarshan Yellamaraju'},
     {id:'johnson-d',    name:'Dustin Johnson'},
+    {id:'fowler',       name:'Rickie Fowler'},
     {id:'mckibbin',     name:'Tom McKibbin'},
     {id:'thorbjornsen', name:'Michael Thorbjornsen'},
     {id:'castillo',     name:'Ricky Castillo'},
@@ -2710,80 +2711,127 @@ function renderScoreEditModalBody() {
   const body = document.getElementById('score-edit-modal-body');
   if (!body) return;
 
-  // Gather all unique sport teams from active room + finalized drafts
-  const allTeams = {}; // id -> {team, league}
+  // Collect all teams AND golfers from active room + finalized drafts
+  const allSportTeams = {};  // id -> {team, league}
+  const allGolfers    = {};  // id -> {golfer}
 
-  // From active room picks
-  toArray(ROOM.picks).forEach(pk => {
-    if (pk && pk.team && pk.league && pk.league !== 'pga') {
-      allTeams[pk.team.id] = { team: pk.team, league: pk.league };
-    }
-  });
-
-  // From finalized drafts
-  const fdCache = window.finalizedDraftCache || {};
-  Object.values(fdCache).forEach(draft => {
-    toArray(draft.picks).forEach(pk => {
-      if (pk && pk.team && pk.league && pk.league !== 'pga') {
-        allTeams[pk.team.id] = { team: pk.team, league: pk.league };
+  function collectPicks(picks) {
+    toArray(picks).forEach(pk => {
+      if (!pk || !pk.team || !pk.league) return;
+      if (pk.league === 'pga') {
+        allGolfers[pk.team.id] = { ...pk.team };
+      } else {
+        allSportTeams[pk.team.id] = { team: pk.team, league: pk.league };
       }
-    });
-  });
-
-  // Fallback: if still no teams, show ALL playoff teams for all active leagues
-  if (!Object.keys(allTeams).length) {
-    const leaguesToShow = (ROOM.leagues || []).filter(l => l !== 'pga');
-    const fallbackLeagues = leaguesToShow.length ? leaguesToShow : ['nba','nhl','nfl','cbb'];
-    fallbackLeagues.forEach(league => {
-      (TEAMS[league] || []).forEach(t => {
-        allTeams[t.id] = { team: t, league };
-      });
     });
   }
 
-  const teams = Object.values(allTeams);
-  if (!teams.length) {
-    body.innerHTML = '<div class="empty">No sport teams found.</div>';
+  collectPicks(ROOM.picks);
+  Object.values(window.finalizedDraftCache || {}).forEach(d => collectPicks(d.picks));
+
+  // Fallback for sport teams if none found
+  if (!Object.keys(allSportTeams).length) {
+    const leagues = (ROOM.leagues||[]).filter(l=>l!=='pga');
+    const fallback = leagues.length ? leagues : ['nba','nhl'];
+    fallback.forEach(league => (TEAMS[league]||[]).forEach(t => {
+      allSportTeams[t.id] = { team: t, league };
+    }));
+  }
+
+  // Fallback for golfers — show all PGA players if none found
+  if (!Object.keys(allGolfers).length) {
+    (TEAMS.pga||[]).forEach(g => { allGolfers[g.id] = { ...g }; });
+  }
+
+  const sportTeams  = Object.values(allSportTeams);
+  const golferList  = Object.values(allGolfers);
+  const hasAnything = sportTeams.length || golferList.length;
+
+  if (!hasAnything) {
+    body.innerHTML = '<div class="empty">No drafted teams or golfers found.</div>';
     return;
   }
 
-  // Group by league
-  const byLeague = {};
-  teams.forEach(({ team, league }) => {
-    if (!byLeague[league]) byLeague[league] = [];
-    if (!byLeague[league].find(t => t.id === team.id)) byLeague[league].push({ ...team, league });
-  });
+  let html = '';
 
-  body.innerHTML = Object.entries(byLeague).map(([league, lteams]) => {
-    const cfg = PLAYOFF[league];
-    if (!cfg) return '';
-    return `
-      <div style="margin-bottom:20px">
-        <div style="font-size:12px;font-weight:700;color:${LCOL[league]};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">${LNAME[league]}</div>
+  // ── PGA GOLFER SCORES ──────────────────────────────
+  if (golferList.length) {
+    // Load current scores from Firebase cache
+    const pgaScores = window.pgaScoreCache || {};
+
+    html += `<div style="margin-bottom:24px">
+      <div style="font-size:12px;font-weight:700;color:var(--pga);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+        ⛳ PGA Scores — Score to Par &amp; Position
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Enter each golfer's score to par (e.g. -5, E, +2) and their leaderboard position. Check CUT if they missed the cut.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">
+        ${golferList.map(g => {
+          const sc = pgaScores[g.id] || mastersScoreCache[g.id] || {};
+          const tpVal = sc.toPar != null ? (sc.toPar === 0 ? 'E' : (sc.toPar > 0 ? '+' : '') + sc.toPar) : '';
+          const cut = sc.cut || false;
+          return `<div style="background:${cut?'rgba(255,92,92,.05)':'var(--surface2)'};border:1px solid ${cut?'rgba(255,92,92,.25)':'var(--border)'};border-radius:8px;padding:10px 12px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+              <span style="${cut?'text-decoration:line-through;color:var(--muted)':''}">${g.name}</span>
+              ${cut?'<span style="font-size:10px;color:var(--danger);font-weight:700">CUT</span>':''}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <input type="text" placeholder="Pos (T3)" value="${sc.position||''}"
+                id="pga-pos-${g.id}"
+                style="width:70px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;text-align:center;outline:none"
+                onchange="savePGAScore('${g.id}')"/>
+              <input type="text" placeholder="Score (±)" value="${tpVal}"
+                id="pga-par-${g.id}"
+                style="width:70px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;text-align:center;outline:none"
+                onchange="savePGAScore('${g.id}')"/>
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:${cut?'var(--danger)':'var(--muted)'};cursor:pointer">
+                <input type="checkbox" ${cut?'checked':''} id="pga-cut-${g.id}"
+                  style="accent-color:var(--danger)"
+                  onchange="savePGAScore('${g.id}')"/> CUT
+              </label>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn btn-acc btn-sm" style="width:auto" onclick="saveAllPGAScores()">Save All Golf Scores</button>
+      </div>
+    </div>`;
+  }
+
+  // ── PLAYOFF SPORT SCORES ───────────────────────────
+  if (sportTeams.length) {
+    const byLeague = {};
+    sportTeams.forEach(({team, league}) => {
+      if (!byLeague[league]) byLeague[league] = [];
+      if (!byLeague[league].find(t => t.id === team.id)) byLeague[league].push({...team, league});
+    });
+
+    html += Object.entries(byLeague).map(([league, lteams]) => {
+      const cfg = PLAYOFF[league];
+      if (!cfg) return '';
+      return `<div style="margin-bottom:20px">
+        <div style="font-size:12px;font-weight:700;color:${LCOL[league]};text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">${LNAME[league]} Playoff Results</div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${lteams.map(t => {
             const d = livePlayoff[t.id] || {};
             const wins = toArray(d.wins).length ? toArray(d.wins) : Array(cfg.rounds).fill(0);
             const eliminated = d.eliminated || false;
             const pts = getPlayoffPts(t.id, league);
-            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${eliminated ? 'rgba(255,92,92,.05)' : 'var(--surface2)'};border:1px solid ${eliminated ? 'rgba(255,92,92,.25)' : 'var(--border)'};border-radius:8px;flex-wrap:wrap">
-              <!-- Team name + points -->
+            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${eliminated?'rgba(255,92,92,.05)':'var(--surface2)'};border:1px solid ${eliminated?'rgba(255,92,92,.25)':'var(--border)'};border-radius:8px;flex-wrap:wrap">
               <div style="min-width:130px;flex-shrink:0">
-                <div style="font-size:13px;font-weight:600;${eliminated ? 'text-decoration:line-through;color:var(--muted)' : ''}">${t.city} ${t.name}</div>
-                <div style="font-size:11px;color:${pts > 0 ? 'var(--accent)' : 'var(--muted)'};margin-top:2px">${pts > 0 ? pts.toFixed(0) + ' pts' : '0 pts'}</div>
+                <div style="font-size:13px;font-weight:600;${eliminated?'text-decoration:line-through;color:var(--muted)':''}">${t.city} ${t.name}</div>
+                <div style="font-size:11px;color:${pts>0?'var(--accent)':'var(--muted)'};margin-top:2px">${pts>0?pts.toFixed(0)+' pts':'0 pts'}</div>
               </div>
-              <!-- Round checkboxes -->
               <div style="display:flex;flex-wrap:wrap;gap:8px;flex:1;align-items:center">
-                ${cfg.names.map((rname, ri) => `
-                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${wins[ri] ? 'var(--success)' : 'var(--muted)'};cursor:pointer;white-space:nowrap;padding:4px 8px;border-radius:6px;background:${wins[ri] ? 'rgba(60,232,154,.1)' : 'var(--surface)'};border:1px solid ${wins[ri] ? 'rgba(60,232,154,.3)' : 'var(--border)'}">
-                    <input type="checkbox" ${wins[ri] ? 'checked' : ''} style="accent-color:var(--success)"
+                ${cfg.names.map((rname,ri)=>`
+                  <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${wins[ri]?'var(--success)':'var(--muted)'};cursor:pointer;white-space:nowrap;padding:4px 8px;border-radius:6px;background:${wins[ri]?'rgba(60,232,154,.1)':'var(--surface)'};border:1px solid ${wins[ri]?'rgba(60,232,154,.3)':'var(--border)'}">
+                    <input type="checkbox" ${wins[ri]?'checked':''} style="accent-color:var(--success)"
                       onchange="savePlayoffWin('${t.id}','${league}',${ri},this.checked);rerenderAfterSave()"/>
                     ${rname}
                   </label>`).join('')}
               </div>
-              <!-- Eliminated toggle -->
-              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${eliminated ? 'var(--danger)' : 'var(--muted)'};cursor:pointer;padding:4px 10px;border-radius:6px;background:${eliminated ? 'rgba(255,92,92,.12)' : 'var(--surface)'};border:1px solid ${eliminated ? 'rgba(255,92,92,.3)' : 'var(--border)'};white-space:nowrap;flex-shrink:0">
-                <input type="checkbox" ${eliminated ? 'checked' : ''} style="accent-color:var(--danger)"
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${eliminated?'var(--danger)':'var(--muted)'};cursor:pointer;padding:4px 10px;border-radius:6px;background:${eliminated?'rgba(255,92,92,.12)':'var(--surface)'};border:1px solid ${eliminated?'rgba(255,92,92,.3)':'var(--border)'};white-space:nowrap;flex-shrink:0">
+                <input type="checkbox" ${eliminated?'checked':''} style="accent-color:var(--danger)"
                   onchange="savePlayoffElim('${t.id}','${league}',this.checked);rerenderAfterSave()"/>
                 ☠ Eliminated
               </label>
@@ -2791,7 +2839,43 @@ function renderScoreEditModalBody() {
           }).join('')}
         </div>
       </div>`;
-  }).join('');
+    }).join('');
+  }
+
+  body.innerHTML = html;
+}
+
+// Save a single golfer's score to Firebase
+async function savePGAScore(golferId) {
+  const posEl  = document.getElementById('pga-pos-'  + golferId);
+  const parEl  = document.getElementById('pga-par-'  + golferId);
+  const cutEl  = document.getElementById('pga-cut-'  + golferId);
+  if (!parEl) return;
+  const position = posEl ? posEl.value.trim() : '';
+  const cut = cutEl ? cutEl.checked : false;
+  // Parse toPar: "E"->0, "-5"->-5, "+2"->2
+  let toPar = null;
+  const raw = parEl.value.trim().toUpperCase();
+  if (raw === 'E') toPar = 0;
+  else if (raw) { const n = parseInt(raw, 10); if (!isNaN(n)) toPar = n; }
+  // Save to both paths for compatibility
+  const score = { toPar, position, cut };
+  await db.ref('masters2026scores/' + golferId).update(score);
+  if (!window.pgaScoreCache) window.pgaScoreCache = {};
+  window.pgaScoreCache[golferId] = score;
+  // Also update mastersScoreCache for immediate display
+  if (!mastersScoreCache[golferId]) mastersScoreCache[golferId] = {};
+  Object.assign(mastersScoreCache[golferId], score);
+}
+
+async function saveAllPGAScores() {
+  const golfers = Object.values(window.finalizedDraftCache || {}).flatMap(d =>
+    toArray(d.picks).filter(pk => pk && pk.league === 'pga').map(pk => pk.team)
+  ).filter(Boolean);
+  const unique = [...new Map(golfers.map(g=>[g.id,g])).values()];
+  for (const g of unique) await savePGAScore(g.id);
+  showToast('All golf scores saved!');
+  rerenderAfterSave();
 }
 
 // ══════════════════════════════════════════════════════
@@ -2972,6 +3056,54 @@ async function fixLukasPick() {
   }
 }
 
+// Fix Drake's pick: Dustin Johnson -> Rickie Fowler
+// Run fixDrakePick() in browser console
+async function fixDrakePick() {
+  try {
+    const snap = await db.ref('finalizedDrafts').get();
+    if (!snap.exists()) { console.log('No finalized drafts found'); return; }
+    let fixed = 0;
+    for (const [draftId, draft] of Object.entries(snap.val())) {
+      const picks = toArray(draft.picks);
+      let changed = false;
+      picks.forEach((pk, i) => {
+        if (pk && pk.participant === 'Drake' && pk.team && pk.team.id === 'johnson-d') {
+          picks[i] = { ...pk, team: { id: 'fowler', name: 'Rickie Fowler' }, league: 'pga' };
+          changed = true;
+          console.log(`Fixed pick in draft ${draftId}: Dustin Johnson -> Rickie Fowler for Drake`);
+        }
+      });
+      if (changed) {
+        await db.ref('finalizedDrafts/' + draftId + '/picks').set(picks);
+        fixed++;
+      }
+    }
+    // Also fix active room if in one
+    if (ME.roomCode) {
+      const roomSnap = await db.ref('rooms/' + ME.roomCode + '/picks').get();
+      if (roomSnap.exists()) {
+        const roomPicks = toArray(roomSnap.val());
+        let roomChanged = false;
+        roomPicks.forEach((pk, i) => {
+          if (pk && pk.participant === 'Drake' && pk.team && pk.team.id === 'johnson-d') {
+            roomPicks[i] = { ...pk, team: { id: 'fowler', name: 'Rickie Fowler' }, league: 'pga' };
+            roomChanged = true;
+          }
+        });
+        if (roomChanged) {
+          await db.ref('rooms/' + ME.roomCode + '/picks').set(roomPicks);
+          fixed++;
+        }
+      }
+    }
+    showToast(fixed > 0 ? `Fixed ${fixed} draft(s)!` : 'No picks needed fixing.');
+    console.log('Fix complete. Drafts updated:', fixed);
+    window.finalizedDraftCache = {};
+    renderScoreboard();
+    renderFinalizedDrafts();
+  } catch(e) { console.error('Fix failed:', e); }
+}
+
 // ══════════════════════════════════════════════════════
 // FINALIZED DRAFTS
 // ══════════════════════════════════════════════════════
@@ -3009,11 +3141,17 @@ async function finalizeDraft() {
 }
 
 async function closeFinalizedDraft(draftId) {
-  if (!ME.isHost) { showToast('Only the host can remove drafts.'); return; }
-  if (!confirm('Remove this draft from the scoreboard? You can restore it later. Scores and All Time results are not affected.')) return;
+  if (!confirm('Remove this draft from the scoreboard? You can restore it with restoreDraft() in the browser console if needed.')) return;
   await db.ref('finalizedDrafts/' + draftId + '/status').set('closed');
   renderFinalizedDrafts();
-  showToast('Draft hidden from scoreboard.');
+  showToast('Draft removed from scoreboard.');
+}
+
+async function markDraftComplete(draftId) {
+  if (!confirm('Mark this draft as complete and remove it from the scoreboard? This means the season is over. You can restore it later if needed.')) return;
+  await db.ref('finalizedDrafts/' + draftId).update({ status: 'closed', completedAt: Date.now() });
+  renderFinalizedDrafts();
+  showToast('Draft marked complete and removed from scoreboard.');
 }
 
 // Restore a closed draft — callable from browser console: restoreDraft('roomCode')
@@ -3116,7 +3254,10 @@ async function renderFinalizedDrafts() {
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <span class="${draft.status === 'active' ? 'fd-status-active' : 'fd-status-done'}">${draft.status === 'active' ? 'Active' : 'Complete'}</span>
-            ${isCurrentRoom && ME.isHost ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:rgba(255,92,92,.3)" onclick="event.stopPropagation();closeFinalizedDraft('${draft.id}')">✕ Remove</button>` : ''}
+            ${ME.isHost || isViewOnly===false ? `
+              <button class="btn btn-ghost btn-sm" style="color:var(--success);border-color:rgba(60,232,154,.3);font-size:11px" onclick="event.stopPropagation();markDraftComplete('${draft.id}')" title="Mark as complete and hide from scoreboard">✓ Done</button>
+              <button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:rgba(255,92,92,.3);font-size:11px" onclick="event.stopPropagation();closeFinalizedDraft('${draft.id}')" title="Remove from scoreboard">✕ Remove</button>
+            ` : ''}
             <span style="color:var(--muted);font-size:14px">${isExpanded ? '▲' : '▼'}</span>
           </div>
         </div>
