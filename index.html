@@ -1962,6 +1962,19 @@ async function fetchMastersScores() {
     mastersScoreCache = snap.val() || {};
     mastersLastFetch = new Date();
     workerScoresLoaded = false;
+
+    // Also populate liveScores so finalized draft scoreboard works
+    Object.entries(mastersScoreCache).forEach(([id, sc]) => {
+      liveScores[id] = {
+        toPar: sc.toPar,
+        position: sc.position || '—',
+        cut: sc.cut || false,
+        total: null,
+        played: sc.toPar != null ? 4 : 0,
+        name: id
+      };
+    });
+
     return Object.keys(mastersScoreCache).length > 0;
   } catch(e) {
     console.warn('Firebase fallback also failed:', e.message);
@@ -2847,9 +2860,9 @@ function renderScoreEditModalBody() {
 
 // Save a single golfer's score to Firebase
 async function savePGAScore(golferId) {
-  const posEl  = document.getElementById('pga-pos-'  + golferId);
-  const parEl  = document.getElementById('pga-par-'  + golferId);
-  const cutEl  = document.getElementById('pga-cut-'  + golferId);
+  const posEl = document.getElementById('pga-pos-' + golferId);
+  const parEl = document.getElementById('pga-par-' + golferId);
+  const cutEl = document.getElementById('pga-cut-' + golferId);
   if (!parEl) return;
   const position = posEl ? posEl.value.trim() : '';
   const cut = cutEl ? cutEl.checked : false;
@@ -2858,14 +2871,29 @@ async function savePGAScore(golferId) {
   const raw = parEl.value.trim().toUpperCase();
   if (raw === 'E') toPar = 0;
   else if (raw) { const n = parseInt(raw, 10); if (!isNaN(n)) toPar = n; }
-  // Save to both paths for compatibility
+
   const score = { toPar, position, cut };
+
+  // Save to Firebase
   await db.ref('masters2026scores/' + golferId).update(score);
+
+  // Update ALL score caches so scoreboard reflects immediately
   if (!window.pgaScoreCache) window.pgaScoreCache = {};
   window.pgaScoreCache[golferId] = score;
-  // Also update mastersScoreCache for immediate display
+
+  // Update mastersScoreCache (used by Masters standings)
   if (!mastersScoreCache[golferId]) mastersScoreCache[golferId] = {};
   Object.assign(mastersScoreCache[golferId], score);
+
+  // CRITICAL: Update liveScores (used by finalized draft scoreboard cards)
+  liveScores[golferId] = {
+    toPar,
+    position,
+    cut,
+    total: null, // stroke total not tracked manually
+    played: toPar != null ? 4 : 0,
+    name: golferId
+  };
 }
 
 async function saveAllPGAScores() {
@@ -2874,8 +2902,11 @@ async function saveAllPGAScores() {
   ).filter(Boolean);
   const unique = [...new Map(golfers.map(g=>[g.id,g])).values()];
   for (const g of unique) await savePGAScore(g.id);
-  showToast('All golf scores saved!');
-  rerenderAfterSave();
+  showToast('All golf scores saved! ⛳');
+  // Close modal and re-render scoreboard
+  document.getElementById('score-edit-modal').style.display = 'none';
+  renderScoreboard();
+  await renderFinalizedDrafts();
 }
 
 // ══════════════════════════════════════════════════════
@@ -3233,8 +3264,14 @@ async function renderFinalizedDrafts() {
         let pp = 0, str = 0, pc = 0;
         teams.forEach(pk => {
           if (pk.league === 'pga') {
-            const sc = liveScores[pk.team?.id] || {};
-            if (sc.total != null) { str += sc.total; pc++; }
+            // Use toPar for scoring (manually entered scores won't have .total)
+            const sc = liveScores[pk.team?.id] || mastersScoreCache[pk.team?.id] || {};
+            const tp = sc.toPar;
+            if (tp != null && !isNaN(tp)) {
+              // Add cut penalty if applicable
+              const effective = sc.cut ? tp + 6 : tp;
+              str += effective; pc++;
+            }
           } else {
             pp += getPlayoffPts(pk.team?.id, pk.league);
           }
@@ -3278,7 +3315,7 @@ async function renderFinalizedDrafts() {
                     const d = livePlayoff[pk.team?.id];
                     const wins = d ? toArray(d.wins).filter(w => w > 0).length : 0;
                     const elim = d?.eliminated;
-                    const sc = pk.league === 'pga' ? (liveScores[pk.team?.id] || {}) : null;
+                    const sc = pk.league === 'pga' ? (liveScores[pk.team?.id] || mastersScoreCache[pk.team?.id] || {}) : null;
                     const label = pk.league === 'pga' ? pk.team.name.split(' ').pop()
                       : (pk.team.city + ' ' + pk.team.name).replace('LA ', '').replace('New York ', 'NY ');
                     const score = pk.league === 'pga'
