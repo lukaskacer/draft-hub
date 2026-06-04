@@ -1585,6 +1585,20 @@ function fmtPts(n){
 
 function renderScoreboard(){
   const el=document.getElementById('sb-grid');
+  const tickerWrap=document.querySelector('#tab-scoreboard .ticker');
+  // Once the draft is finalized, the permanent finalized-draft card below IS the
+  // scoreboard. Hide the live in-room grid so the drafted teams don't show twice.
+  if(ROOM.finalized){
+    if(el){ el.innerHTML=''; el.style.display='none'; }
+    if(tickerWrap) tickerWrap.style.display='none';
+    const sbStatusEl=document.getElementById('sb-status-bar'); if(sbStatusEl) sbStatusEl.style.display='none';
+    const hintEl=document.getElementById('sb-finalize-hint'); if(hintEl) hintEl.style.display='none';
+    const bannerEl=document.getElementById('winner-banner'); if(bannerEl) bannerEl.classList.remove('show');
+    updateFinalizeBtn();
+    return;
+  }
+  if(el) el.style.display='';
+  if(tickerWrap) tickerWrap.style.display='';
   const picks=toArray(ROOM.picks);
   const participants=Object.values(ROOM.participants||{}).map(p=>p.name);
   if(!participants.length||!picks.length){
