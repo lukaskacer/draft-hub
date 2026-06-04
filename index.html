@@ -468,9 +468,24 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
           <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">ROUND 4</div><div class="bebas" style="font-size:18px;color:var(--accent2)">Strokes</div></div>
         </div>
       </div>
+      <div class="card" id="sc-wc-card">
+        <div class="sec-hdr"><div class="sec-title">World Cup Scoring</div><span class="badge" style="background:rgba(124,92,255,.15);color:var(--wc)">2026</span></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">Group result plus bracket wins. Bracket points double each round. A team accumulates points for every stage it clears.</p>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;letter-spacing:.04em">GROUP STAGE</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
+          <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">WIN GROUP</div><div class="bebas" style="font-size:22px;color:var(--wc)">1</div></div>
+          <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">2ND / WILDCARD</div><div class="bebas" style="font-size:22px;color:var(--wc)">0.5</div></div>
+        </div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;letter-spacing:.04em">KNOCKOUT BRACKET</div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+          <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">R32</div><div class="bebas" style="font-size:22px;color:var(--accent)">1</div></div>
+          <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">R16</div><div class="bebas" style="font-size:22px;color:var(--accent)">2</div></div>
+          <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">QF</div><div class="bebas" style="font-size:22px;color:var(--accent)">4</div></div>
+          <div style="text-align:center;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">SF</div><div class="bebas" style="font-size:22px;color:var(--accent)">8</div></div>
+          <div style="text-align:center;padding:12px;background:rgba(255,206,84,.1);border-radius:8px;border:1px solid rgba(255,206,84,.3)"><div style="font-size:10px;color:var(--muted);margin-bottom:4px">CHAMPION</div><div class="bebas" style="font-size:22px;color:#ffce54">16</div></div>
+        </div>
+      </div>
     </div>
-
-    <!-- SCOREBOARD TAB -->
     <div id="tab-scoreboard" style="display:none">
       <div class="ticker"><div class="ldot"></div><span style="color:var(--success);font-weight:700;font-size:11px;flex-shrink:0">LIVE</span><div class="ticker-inner" id="ticker">—</div></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -627,6 +642,9 @@ const PLAYOFF={
   nfl:{rounds:4,names:['Wild Card','Divisional','Conf Championship','Super Bowl'],base:1},
   cbb:{rounds:6,names:['R64','R32','Sweet 16','Elite Eight','Final Four','Championship'],base:1}
 };
+// World Cup uses the same doubling-bracket model (R32=1, R16=2, QF=4, SF=8, Final/Champion=16),
+// plus a group-stage result handled separately in getPlayoffPts (win group=1, 2nd/wildcard=0.5).
+PLAYOFF.wc={rounds:5,names:['Round of 32','Round of 16','Quarterfinal','Semifinal','Final'],base:1};
 const TEAMS={
   nba:[
     // 2026 NBA Playoff Teams only
@@ -887,7 +905,7 @@ let ROOM = {}; // mirrors Firebase room state
 let filterLeague = null;
 let liveScores = {};
 let livePlayoff = {};
-let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1};
+let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1};
 let fetching = false;
 
 // ══════════════════════════════════════════════════════
@@ -1551,7 +1569,18 @@ function getPlayoffPts(id,league){
   const d=livePlayoff[id]; if(!d) return 0;
   const base=playoffBase[league]||1;
   const wins = toArray(d.wins);
-  return wins.reduce((sum,w,r)=>sum+w*base*Math.pow(2,r),0);
+  let pts = wins.reduce((sum,w,r)=>sum+w*base*Math.pow(2,r),0);
+  // World Cup group-stage bonus: win group = 1 pt, 2nd/wildcard = 0.5 pt
+  if(league==='wc'){
+    if(d.group==='won') pts += 1;
+    else if(d.group==='second'||d.group==='wildcard') pts += 0.5;
+  }
+  return pts;
+}
+// Points formatter: whole numbers stay whole, half-points show one decimal (e.g. 3, 3.5)
+function fmtPts(n){
+  if(n==null||isNaN(n)) return '0';
+  return Number.isInteger(n) ? String(n) : (Math.round(n*10)/10).toString();
 }
 
 function renderScoreboard(){
@@ -1596,7 +1625,7 @@ function renderScoreboard(){
           <div style="font-size:10px;color:var(--muted);margin-top:2px">Rank #${rank+1} · ${o.teams.length} picks</div>
         </div>
         <div style="text-align:right">
-          ${hasSports?`<div class="sb-total-pts">${o.pp.toFixed(0)}<span style="font-size:10px;font-family:'DM Sans',sans-serif;color:var(--muted);margin-left:2px">pts</span></div>`:''}
+          ${hasSports?`<div class="sb-total-pts">${fmtPts(o.pp)}<span style="font-size:10px;font-family:'DM Sans',sans-serif;color:var(--muted);margin-left:2px">pts</span></div>`:''}
           ${hasPGA&&o.pc>0?`<div style="font-size:13px;color:var(--accent2);font-weight:600">${o.str} strokes</div>`:''}
         </div>
       </div>
@@ -1614,6 +1643,37 @@ function renderScoreboard(){
               <div style="text-align:right">
                 <div class="sb-score" style="color:${tpCol}">${tp}</div>
                 <div style="font-size:10px;color:var(--muted)">${sc.total!=null?sc.total+' str':sc.played===0?'Not started':''}</div>
+              </div>
+            </div>`;
+          } else if(pk.league==='wc'){
+            const d=livePlayoff[pk.team?.id];
+            const wins=toArray(d?.wins||[]);
+            const cfg=PLAYOFF.wc;
+            const pts=getPlayoffPts(pk.team?.id,'wc');
+            const rnd=wins.filter(w=>w>0).length;
+            const eliminated=d?.eliminated||false;
+            const grp=d?.group;
+            const champ=wins[4]>0;
+            const grpLabel=grp==='won'?'Won Group':grp==='second'?'2nd in Group':grp==='wildcard'?'Wildcard':null;
+            const hasData=!!grp||rnd>0||eliminated;
+            const struck=eliminated&&!champ;
+            return `<div class="sb-row" style="${struck?'opacity:.7':''}">
+              <div style="flex:1">
+                <div class="sb-tname" style="${struck?'text-decoration:line-through;color:var(--muted)':''}">${teamLabel(pk.team,pk.league)}</div>
+                <div class="sb-detail" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:3px">
+                  ${grpLabel?`<span style="font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700;background:${grp==='won'?'rgba(60,232,154,.15)':'rgba(124,92,255,.15)'};color:${grp==='won'?'var(--success)':'var(--wc)'}">${grpLabel}</span>`:''}
+                  ${champ?'<span style="font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700;background:rgba(255,206,84,.18);color:#ffce54">🏆 Champion</span>'
+                    :eliminated?'<span style="background:rgba(255,92,92,.15);color:var(--danger);font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">☠ Eliminated</span>'
+                    :rnd>0?`<span style="color:var(--muted);font-size:11px">${cfg.names[rnd-1]} ✓</span>`
+                    :!grp?'<span style="color:var(--muted);font-size:11px">Group stage</span>':''}
+                  ${(rnd>0||grp)?`<span style="display:inline-flex;gap:2px;vertical-align:middle">
+                    ${cfg.names.map((_,ri)=>`<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${wins[ri]?'var(--success)':'var(--border)'}"></span>`).join('')}
+                  </span>`:''}
+                </div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div class="sb-score" style="color:${pts>0?'var(--accent)':'var(--muted)'}">${pts>0?fmtPts(pts):'—'}</div>
+                <div style="font-size:10px;color:var(--muted)">${LNAME.wc}</div>
               </div>
             </div>`;
           } else {
@@ -1697,7 +1757,7 @@ function renderScoreboard(){
       const tp=sc.toPar!=null?(sc.toPar>0?'+'+sc.toPar:sc.toPar===0?'E':''+sc.toPar):'—';
       return `${p.team.name}: ${tp} (${sc.position||'—'})`;
     } else {
-      return `${teamLabel(p.team,p.league)}: ${getPlayoffPts(p.team.id,p.league).toFixed(0)}pts`;
+      return `${teamLabel(p.team,p.league)}: ${fmtPts(getPlayoffPts(p.team.id,p.league))}pts`;
     }
   });
   document.getElementById('ticker').textContent=msgs.join('   ·   ')||'Scores will appear once the draft begins';
@@ -2725,7 +2785,7 @@ async function renderRoomModal(bodyEl, roomCode) {
             </div>
           </div>
           <div style="text-align:right">
-            <div class="modal-sb-score" style="color:${o.pp>0?'var(--accent)':'var(--muted)'}">${o.pp.toFixed(0)}</div>
+            <div class="modal-sb-score" style="color:${o.pp>0?'var(--accent)':'var(--muted)'}">${fmtPts(o.pp)}</div>
             <div class="modal-sb-detail">pts</div>
           </div>
         </div>`).join('')}`;
@@ -2803,10 +2863,12 @@ function renderScoreEditModalBody() {
 
   // Leagues that can have scores edited here. NHL teams and golfers are intentionally excluded.
   const EDIT_LEAGUES = ['nba','nfl','cbb'];
+  const allWCTeams = {}; // id -> team (World Cup)
 
   function collectPicks(picks) {
     toArray(picks).forEach(pk => {
       if (!pk || !pk.team || !pk.league) return;
+      if (pk.league === 'wc') { allWCTeams[pk.team.id] = { ...pk.team }; return; }
       if (!EDIT_LEAGUES.includes(pk.league)) return;
       allSportTeams[pk.team.id] = { team: pk.team, league: pk.league };
     });
@@ -2824,9 +2886,16 @@ function renderScoreEditModalBody() {
     }));
   }
 
+  // Fallback for World Cup — if WC is in the draft but no picks resolved yet, show full field
+  if (!Object.keys(allWCTeams).length && (ROOM.leagues||[]).includes('wc')) {
+    (TEAMS.wc||[]).forEach(t => { allWCTeams[t.id] = { ...t }; });
+  }
+
+  const wcTeams = Object.values(allWCTeams);
+
   const sportTeams  = Object.values(allSportTeams);
   const golferList  = Object.values(allGolfers);
-  const hasAnything = sportTeams.length || golferList.length;
+  const hasAnything = sportTeams.length || golferList.length || wcTeams.length;
 
   if (!hasAnything) {
     body.innerHTML = '<div class="empty">No drafted teams or golfers found.</div>';
@@ -2834,6 +2903,62 @@ function renderScoreEditModalBody() {
   }
 
   let html = '';
+
+  // ── WORLD CUP RESULTS ──────────────────────────────
+  if (wcTeams.length) {
+    const cfg = PLAYOFF.wc;
+    // Group teams by their group letter for tidy entry
+    const byGroup = {};
+    wcTeams.forEach(t => { (byGroup[t.group||'?'] = byGroup[t.group||'?'] || []).push(t); });
+    const groupKeys = Object.keys(byGroup).sort();
+
+    html += `<div style="margin-bottom:24px">
+      <div style="font-size:12px;font-weight:700;color:var(--wc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+        ⚽ World Cup Results
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.5">Set each team's group result, then check off bracket wins as they happen. Win group = 1 · 2nd/Wildcard = 0.5 · R32 = 1 · R16 = 2 · QF = 4 · SF = 8 · Champion = 16.</p>
+      ${groupKeys.map(gk => {
+        return `<div style="font-size:11px;font-weight:700;color:var(--muted);margin:10px 0 6px;letter-spacing:.04em">GROUP ${gk}</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${byGroup[gk].map(t => {
+            const d = livePlayoff[t.id] || {};
+            const wins = toArray(d.wins).length ? toArray(d.wins) : Array(cfg.rounds).fill(0);
+            const grp = d.group || '';
+            const eliminated = d.eliminated || false;
+            const pts = getPlayoffPts(t.id, 'wc');
+            return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${eliminated?'rgba(255,92,92,.05)':'var(--surface2)'};border:1px solid ${eliminated?'rgba(255,92,92,.25)':'var(--border)'};border-radius:8px;flex-wrap:wrap">
+              <div style="min-width:120px;flex-shrink:0">
+                <div style="font-size:13px;font-weight:600;${eliminated?'text-decoration:line-through;color:var(--muted)':''}">${t.name}</div>
+                <div style="font-size:11px;color:${pts>0?'var(--accent)':'var(--muted)'};margin-top:2px">${pts>0?fmtPts(pts)+' pts':'0 pts'}</div>
+              </div>
+              <select onchange="saveWCGroup('${t.id}',this.value);rerenderAfterSave()"
+                style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;outline:none;flex-shrink:0">
+                <option value="" ${!grp?'selected':''}>Group: —</option>
+                <option value="won" ${grp==='won'?'selected':''}>Won Group (1)</option>
+                <option value="second" ${grp==='second'?'selected':''}>2nd in Group (0.5)</option>
+                <option value="wildcard" ${grp==='wildcard'?'selected':''}>Wildcard (0.5)</option>
+              </select>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;flex:1;align-items:center">
+                ${cfg.names.map((rname,ri)=>{
+                  const label = ri===4 ? 'Champion' : rname;
+                  return `<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${wins[ri]?'var(--success)':'var(--muted)'};cursor:pointer;white-space:nowrap;padding:4px 8px;border-radius:6px;background:${wins[ri]?'rgba(60,232,154,.1)':'var(--surface)'};border:1px solid ${wins[ri]?'rgba(60,232,154,.3)':'var(--border)'}">
+                    <input type="checkbox" ${wins[ri]?'checked':''} style="accent-color:var(--success)"
+                      onchange="savePlayoffWin('${t.id}','wc',${ri},this.checked);rerenderAfterSave()"/>
+                    ${label}
+                  </label>`;
+                }).join('')}
+              </div>
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${eliminated?'var(--danger)':'var(--muted)'};cursor:pointer;padding:4px 10px;border-radius:6px;background:${eliminated?'rgba(255,92,92,.12)':'var(--surface)'};border:1px solid ${eliminated?'rgba(255,92,92,.3)':'var(--border)'};white-space:nowrap;flex-shrink:0">
+                <input type="checkbox" ${eliminated?'checked':''} style="accent-color:var(--danger)"
+                  onchange="savePlayoffElim('${t.id}','wc',this.checked);rerenderAfterSave()"/>
+                ☠ Out
+              </label>
+            </div>`;
+          }).join('')}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
 
   // ── PGA GOLFER SCORES ──────────────────────────────
   if (golferList.length) {
@@ -3095,6 +3220,17 @@ async function savePlayoffElim(teamId, league, eliminated) {
   await db.ref('playoffScores/' + teamId).update({ eliminated, league });
   if (ME.roomCode) db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ eliminated, league }).catch(()=>{});
   showToast(eliminated ? '☠ Team marked eliminated.' : 'Elimination removed.');
+}
+
+// Save a World Cup team's group-stage result (won / second / wildcard / cleared)
+async function saveWCGroup(teamId, result) {
+  const group = result || null;
+  await db.ref('playoffScores/' + teamId).update({ group, league: 'wc' });
+  if (ME.roomCode) db.ref('rooms/' + ME.roomCode + '/playoffScores/' + teamId).update({ group, league: 'wc' }).catch(()=>{});
+  if (!livePlayoff[teamId]) livePlayoff[teamId] = {};
+  livePlayoff[teamId].group = group;
+  livePlayoff[teamId].league = 'wc';
+  showToast(group ? 'Group result saved!' : 'Group result cleared.');
 }
 
 // ══════════════════════════════════════════════════════
@@ -3385,7 +3521,7 @@ async function renderFinalizedDrafts() {
               return `<div style="background:var(--surface2);border:1px solid ${rank === 0 ? 'rgba(232,255,60,.3)' : 'var(--border)'};border-radius:10px;padding:12px 14px">
                 <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:4px">${rankEmoji} ${o.participant}</div>
                 <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:${o.pp > 0 || o.pc > 0 ? 'var(--accent)' : 'var(--muted)'}">
-                  ${hasSports ? o.pp.toFixed(0) + '<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">pts</span>' : ''}
+                  ${hasSports ? fmtPts(o.pp) + '<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">pts</span>' : ''}
                   ${hasPGA && o.pc > 0 ? (()=>{const tp=o.str;const s=tp===0?'E':tp>0?'+'+tp:''+tp;return s+'<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">to par</span>';})() : ''}
                   ${!hasSports && (!hasPGA || o.pc === 0) ? '—' : ''}
                 </div>
