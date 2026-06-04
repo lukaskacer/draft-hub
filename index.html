@@ -14,7 +14,7 @@
   --bg:#0d0f14;--surface:#161a23;--surface2:#1e2330;--border:#2a2f3d;
   --accent:#e8ff3c;--accent2:#3ce8ff;--text:#f0f2f8;--muted:#7a8199;
   --danger:#ff5c5c;--success:#3ce89a;--warn:#ffb347;
-  --nba:#c9463d;--nhl:#1a6abf;--nfl:#1f3e7a;--cbb:#e87c2a;--pga:#2a9e4f;
+  --nba:#c9463d;--nhl:#1a6abf;--nfl:#1f3e7a;--cbb:#e87c2a;--pga:#2a9e4f;--wc:#7c5cff;
 }
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
 .bebas{font-family:'Bebas Neue',sans-serif;letter-spacing:.05em}
@@ -111,7 +111,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 .badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--surface2);color:var(--muted)}
 
 /* ── SETUP ── */
-.league-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.league-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .lcard{padding:12px 6px;border-radius:10px;border:2px solid var(--border);background:var(--surface);cursor:pointer;text-align:center;transition:.15s;user-select:none}
 .lcard:hover{border-color:var(--muted)}
 .lcard.sel-nba{border-color:var(--nba);background:rgba(201,70,61,.1)}
@@ -119,6 +119,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 .lcard.sel-nfl{border-color:var(--nfl);background:rgba(31,62,122,.1)}
 .lcard.sel-cbb{border-color:var(--cbb);background:rgba(232,124,42,.1)}
 .lcard.sel-pga{border-color:var(--pga);background:rgba(42,158,79,.1)}
+.lcard.sel-wc{border-color:var(--wc);background:rgba(124,92,255,.12)}
 .lcard-emoji{font-size:20px;margin-bottom:3px}
 .lcard-name{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.06em}
 .lcard-sub{font-size:10px;color:var(--muted)}
@@ -185,6 +186,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 .tag-nfl{background:rgba(31,62,122,.2);color:#7da4e8}
 .tag-cbb{background:rgba(232,124,42,.2);color:#f5a96a}
 .tag-pga{background:rgba(42,158,79,.2);color:#6dd99a}
+.tag-wc{background:rgba(124,92,255,.2);color:#b3a0ff}
 
 /* CLOCK BANNER */
 .clock-banner{border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px}
@@ -387,6 +389,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
           <div class="lcard" id="lc-nfl" onclick="hostToggleLeague('nfl')"><div class="lcard-emoji">🏈</div><div class="lcard-name">NFL</div><div class="lcard-sub">Football</div></div>
           <div class="lcard" id="lc-cbb" onclick="hostToggleLeague('cbb')"><div class="lcard-emoji">🎓</div><div class="lcard-name">CBB</div><div class="lcard-sub">College Hoops</div></div>
           <div class="lcard" id="lc-pga" onclick="hostToggleLeague('pga')"><div class="lcard-emoji">⛳</div><div class="lcard-name">PGA</div><div class="lcard-sub">Golf Majors</div></div>
+          <div class="lcard" id="lc-wc" onclick="hostToggleLeague('wc')"><div class="lcard-emoji">⚽</div><div class="lcard-name">World Cup</div><div class="lcard-sub">2026 · 48 Teams</div></div>
         </div>
         <div id="major-picker" style="display:none">
           <div style="margin-top:14px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Select Major Tournament</div>
@@ -609,8 +612,15 @@ const MAJORS = [
   {id:'usopen2026',name:'US Open',venue:'Shinnecock Hills',location:'Southampton, NY',dates:'Jun 18–21, 2026',start:new Date('2026-06-18'),end:new Date('2026-06-21'),espnId:'401580346'},
   {id:'theopen2026',name:'The Open Championship',venue:'Royal Birkdale',location:'Southport, England',dates:'Jul 16–19, 2026',start:new Date('2026-07-16'),end:new Date('2026-07-19'),espnId:'401580347'}
 ];
-const LCOL={nba:'var(--nba)',nhl:'var(--nhl)',nfl:'var(--nfl)',cbb:'var(--cbb)',pga:'var(--pga)'};
-const LNAME={nba:'NBA',nhl:'NHL',nfl:'NFL',cbb:'CBB',pga:'PGA'};
+const LCOL={nba:'var(--nba)',nhl:'var(--nhl)',nfl:'var(--nfl)',cbb:'var(--cbb)',pga:'var(--pga)',wc:'var(--wc)'};
+const LNAME={nba:'NBA',nhl:'NHL',nfl:'NFL',cbb:'CBB',pga:'PGA',wc:'World Cup'};
+// Unified team label: PGA shows player name; World Cup shows "Country (Group)"; others show "City Name"
+function teamLabel(team, league){
+  if(!team) return '';
+  if(league==='pga') return team.name;
+  if(league==='wc') return team.name + (team.group ? ' ('+team.group+')' : '');
+  return (team.city?team.city+' ':'') + team.name;
+}
 const PLAYOFF={
   nba:{rounds:4,names:['First Round','Conf Semis','Conf Finals','NBA Finals'],base:1},
   nhl:{rounds:4,names:['First Round','Conf Semis','Conf Finals','Stanley Cup Final'],base:1},
@@ -803,6 +813,69 @@ const TEAMS={
     {id:'ferguson',     name:'Ewen Ferguson'},
     {id:'pepperell',    name:'Eddie Pepperell'},
     {id:'cockerell',    name:'Grant Forrest'},
+  ],
+  wc:[
+    // 2026 FIFA World Cup — all 48 qualified teams (group letter stored for scoring)
+    // Group A
+    {id:'mex-w',name:'Mexico',group:'A'},
+    {id:'kor-w',name:'South Korea',group:'A'},
+    {id:'cze-w',name:'Czechia',group:'A'},
+    {id:'rsa-w',name:'South Africa',group:'A'},
+    // Group B
+    {id:'sui-w',name:'Switzerland',group:'B'},
+    {id:'can-w',name:'Canada',group:'B'},
+    {id:'qat-w',name:'Qatar',group:'B'},
+    {id:'bih-w',name:'Bosnia & Herzegovina',group:'B'},
+    // Group C
+    {id:'bra-w',name:'Brazil',group:'C'},
+    {id:'mar-w',name:'Morocco',group:'C'},
+    {id:'sco-w',name:'Scotland',group:'C'},
+    {id:'hai-w',name:'Haiti',group:'C'},
+    // Group D
+    {id:'usa-w',name:'United States',group:'D'},
+    {id:'aus-w',name:'Australia',group:'D'},
+    {id:'tur-w',name:'Türkiye',group:'D'},
+    {id:'par-w',name:'Paraguay',group:'D'},
+    // Group E
+    {id:'ger-w',name:'Germany',group:'E'},
+    {id:'ecu-w',name:'Ecuador',group:'E'},
+    {id:'civ-w',name:'Ivory Coast',group:'E'},
+    {id:'cuw-w',name:'Curaçao',group:'E'},
+    // Group F
+    {id:'ned-w',name:'Netherlands',group:'F'},
+    {id:'jpn-w',name:'Japan',group:'F'},
+    {id:'swe-w',name:'Sweden',group:'F'},
+    {id:'tun-w',name:'Tunisia',group:'F'},
+    // Group G
+    {id:'bel-w',name:'Belgium',group:'G'},
+    {id:'irn-w',name:'Iran',group:'G'},
+    {id:'egy-w',name:'Egypt',group:'G'},
+    {id:'nzl-w',name:'New Zealand',group:'G'},
+    // Group H
+    {id:'esp-w',name:'Spain',group:'H'},
+    {id:'uru-w',name:'Uruguay',group:'H'},
+    {id:'ksa-w',name:'Saudi Arabia',group:'H'},
+    {id:'cpv-w',name:'Cape Verde',group:'H'},
+    // Group I
+    {id:'fra-w',name:'France',group:'I'},
+    {id:'sen-w',name:'Senegal',group:'I'},
+    {id:'nor-w',name:'Norway',group:'I'},
+    {id:'irq-w',name:'Iraq',group:'I'},
+    // Group J
+    {id:'arg-w',name:'Argentina',group:'J'},
+    {id:'aut-w',name:'Austria',group:'J'},
+    {id:'alg-w',name:'Algeria',group:'J'},
+    {id:'jor-w',name:'Jordan',group:'J'},
+    // Group K
+    {id:'por-w',name:'Portugal',group:'K'},
+    {id:'col-w',name:'Colombia',group:'K'},
+    {id:'uzb-w',name:'Uzbekistan',group:'K'},
+    {id:'cod-w',name:'DR Congo',group:'K'},
+    // Group L
+    {id:'eng-w',name:'England',group:'L'},
+    {id:'cro-w',name:'Croatia',group:'L'},
+    {id:'pan-w',name:'Panama',group:'L'},
+    {id:'gha-w',name:'Ghana',group:'L'},
   ]
 };
 
@@ -1006,7 +1079,7 @@ function hostToggleLeague(l){
 
 function updateLeagueCards(){
   const leagues=ROOM.leagues||[];
-  ['nba','nhl','nfl','cbb','pga'].forEach(l=>{
+  ['nba','nhl','nfl','cbb','pga','wc'].forEach(l=>{
     const el=document.getElementById('lc-'+l);
     if(el) el.className='lcard'+(leagues.includes(l)?' sel-'+l:'');
   });
@@ -1112,7 +1185,7 @@ function getAvail(){
   leagues.forEach(l=>{
     (TEAMS[l]||[]).forEach(t=>{
       if(!drafted.includes(t.id)){
-        const label=l==='pga'?t.name:(t.city+' '+t.name);
+        const label=teamLabel(t,l);
         if(!q||label.toLowerCase().includes(q)) out.push({...t,league:l});
       }
     });
@@ -1144,7 +1217,7 @@ function renderAvail(){
       <div class="t-info">
         <div class="t-dot" style="background:${LCOL[t.league]}"></div>
         <div>
-          <div class="t-name">${t.league==='pga'?t.name:t.city+' '+t.name}</div>
+          <div class="t-name">${teamLabel(t,t.league)}</div>
           <div class="t-meta"><span class="ltag tag-${t.league}">${LNAME[t.league]}</span></div>
         </div>
       </div>
@@ -1174,7 +1247,7 @@ function renderBoard(){
     return `<div class="board-slot ${isCurrent?'current':isMine&&p.team?'mine':''}">
       <div class="slot-num">${i+1}</div>
       <div class="slot-owner">${p.participant}</div>
-      <div class="slot-pick">${p.team?(p.league==='pga'?p.team.name:p.team.city+' '+p.team.name):'<span class="slot-empty">'+(isCurrent?'On the clock...':'—')+'</span>'}</div>
+      <div class="slot-pick">${p.team?teamLabel(p.team,p.league):'<span class="slot-empty">'+(isCurrent?'On the clock...':'—')+'</span>'}</div>
       ${p.league?`<span class="ltag tag-${p.league}">${LNAME[p.league]}</span>`:''}
     </div>`;
   }).join('');
@@ -1554,7 +1627,7 @@ function renderScoreboard(){
             const tid = pk.team.id.replace(/[^a-zA-Z0-9]/g,'-');
             return `<div class="sb-row" style="${eliminated?'opacity:.7':''}">
               <div style="flex:1">
-                <div class="sb-tname" style="${eliminated?'text-decoration:line-through;color:var(--muted)':''}">${pk.team.city} ${pk.team.name}</div>
+                <div class="sb-tname" style="${eliminated?'text-decoration:line-through;color:var(--muted)':''}">${teamLabel(pk.team,pk.league)}</div>
                 <div class="sb-detail" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:3px">
                   ${eliminated
                     ? `<span style="background:rgba(255,92,92,.15);color:var(--danger);font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">☠ Eliminated</span>
@@ -1624,7 +1697,7 @@ function renderScoreboard(){
       const tp=sc.toPar!=null?(sc.toPar>0?'+'+sc.toPar:sc.toPar===0?'E':''+sc.toPar):'—';
       return `${p.team.name}: ${tp} (${sc.position||'—'})`;
     } else {
-      return `${p.team.city} ${p.team.name}: ${getPlayoffPts(p.team.id,p.league).toFixed(0)}pts`;
+      return `${teamLabel(p.team,p.league)}: ${getPlayoffPts(p.team.id,p.league).toFixed(0)}pts`;
     }
   });
   document.getElementById('ticker').textContent=msgs.join('   ·   ')||'Scores will appear once the draft begins';
@@ -2647,7 +2720,7 @@ async function renderRoomModal(bodyEl, roomCode) {
             <div class="modal-golfer-list">
               ${o.teams.map(pk => `<span class="modal-golfer-pill">
                 <span class="ltag tag-${pk.league}">${(pk.league||'').toUpperCase()}</span>
-                <span>${pk.league==='pga'?pk.team.name:pk.team.city+' '+pk.team.name}</span>
+                <span>${teamLabel(pk.team,pk.league)}</span>
               </span>`).join('')}
             </div>
           </div>
@@ -2728,14 +2801,14 @@ function renderScoreEditModalBody() {
   const allSportTeams = {};  // id -> {team, league}
   const allGolfers    = {};  // id -> {golfer}
 
+  // Leagues that can have scores edited here. NHL teams and golfers are intentionally excluded.
+  const EDIT_LEAGUES = ['nba','nfl','cbb'];
+
   function collectPicks(picks) {
     toArray(picks).forEach(pk => {
       if (!pk || !pk.team || !pk.league) return;
-      if (pk.league === 'pga') {
-        allGolfers[pk.team.id] = { ...pk.team };
-      } else {
-        allSportTeams[pk.team.id] = { team: pk.team, league: pk.league };
-      }
+      if (!EDIT_LEAGUES.includes(pk.league)) return;
+      allSportTeams[pk.team.id] = { team: pk.team, league: pk.league };
     });
   }
 
@@ -2744,16 +2817,11 @@ function renderScoreEditModalBody() {
 
   // Fallback for sport teams if none found
   if (!Object.keys(allSportTeams).length) {
-    const leagues = (ROOM.leagues||[]).filter(l=>l!=='pga');
-    const fallback = leagues.length ? leagues : ['nba','nhl'];
+    const leagues = (ROOM.leagues||[]).filter(l=>EDIT_LEAGUES.includes(l));
+    const fallback = leagues.length ? leagues : ['nba'];
     fallback.forEach(league => (TEAMS[league]||[]).forEach(t => {
       allSportTeams[t.id] = { team: t, league };
     }));
-  }
-
-  // Fallback for golfers — show all PGA players if none found
-  if (!Object.keys(allGolfers).length) {
-    (TEAMS.pga||[]).forEach(g => { allGolfers[g.id] = { ...g }; });
   }
 
   const sportTeams  = Object.values(allSportTeams);
@@ -3333,6 +3401,8 @@ async function renderFinalizedDrafts() {
                       : null;
                     const label = pk.league === 'pga'
                       ? pk.team.name.split(' ').pop()
+                      : pk.league === 'wc'
+                      ? pk.team.name + (pk.team.group ? ' (' + pk.team.group + ')' : '')
                       : (pk.team.city + ' ' + pk.team.name).replace('LA ', '').replace('New York ', 'NY ');
                     // For PGA apply cut penalty for display
                     const rawTp = sc?.toPar;
