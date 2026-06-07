@@ -909,6 +909,7 @@ let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1};
 // Which leagues appear in the score-editing tools (Edit Scores modal + Edit Playoff Results panel).
 // NHL is intentionally excluded. Add 'wc' here once the real World Cup draft is finalized.
 let SCORE_EDIT_LEAGUES = ['nba'];
+console.log('[Draft Hub] Score-edit leagues enabled:', SCORE_EDIT_LEAGUES.join(', ') || '(none)');
 let fetching = false;
 
 // ══════════════════════════════════════════════════════
