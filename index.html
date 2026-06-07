@@ -906,6 +906,9 @@ let filterLeague = null;
 let liveScores = {};
 let livePlayoff = {};
 let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1};
+// Which leagues appear in the score-editing tools (Edit Scores modal + Edit Playoff Results panel).
+// NHL is intentionally excluded. Add 'wc' here once the real World Cup draft is finalized.
+let SCORE_EDIT_LEAGUES = ['nba'];
 let fetching = false;
 
 // ══════════════════════════════════════════════════════
@@ -2875,33 +2878,38 @@ function renderScoreEditModalBody() {
   const allSportTeams = {};  // id -> {team, league}
   const allGolfers    = {};  // id -> {golfer}
 
-  // Leagues that can have scores edited here. NHL teams and golfers are intentionally excluded.
-  const EDIT_LEAGUES = ['nba','nfl','cbb'];
+  // Leagues that can have scores edited here (driven by SCORE_EDIT_LEAGUES).
+  // NHL teams and golfers are intentionally excluded; World Cup has its own section below.
+  const EDIT_LEAGUES = SCORE_EDIT_LEAGUES.filter(l => l !== 'wc');
+  const WC_ENABLED = SCORE_EDIT_LEAGUES.includes('wc');
   const allWCTeams = {}; // id -> team (World Cup)
 
   function collectPicks(picks) {
     toArray(picks).forEach(pk => {
       if (!pk || !pk.team || !pk.league) return;
-      if (pk.league === 'wc') { allWCTeams[pk.team.id] = { ...pk.team }; return; }
+      if (pk.league === 'wc') { if (WC_ENABLED) allWCTeams[pk.team.id] = { ...pk.team }; return; }
       if (!EDIT_LEAGUES.includes(pk.league)) return;
       allSportTeams[pk.team.id] = { team: pk.team, league: pk.league };
     });
   }
 
   collectPicks(ROOM.picks);
-  Object.values(window.finalizedDraftCache || {}).forEach(d => collectPicks(d.picks));
+  // Only pull from drafts still on the scoreboard (skip ones removed via "Remove Event")
+  Object.values(window.finalizedDraftCache || {})
+    .filter(d => d && d.status !== 'closed')
+    .forEach(d => collectPicks(d.picks));
 
   // Fallback for sport teams if none found
   if (!Object.keys(allSportTeams).length) {
     const leagues = (ROOM.leagues||[]).filter(l=>EDIT_LEAGUES.includes(l));
-    const fallback = leagues.length ? leagues : ['nba'];
+    const fallback = leagues.length ? leagues : (EDIT_LEAGUES[0] ? [EDIT_LEAGUES[0]] : []);
     fallback.forEach(league => (TEAMS[league]||[]).forEach(t => {
       allSportTeams[t.id] = { team: t, league };
     }));
   }
 
-  // Fallback for World Cup — if WC is in the draft but no picks resolved yet, show full field
-  if (!Object.keys(allWCTeams).length && (ROOM.leagues||[]).includes('wc')) {
+  // Fallback for World Cup — if WC editing is enabled and it's in the draft but no picks resolved
+  if (WC_ENABLED && !Object.keys(allWCTeams).length && (ROOM.leagues||[]).includes('wc')) {
     (TEAMS.wc||[]).forEach(t => { allWCTeams[t.id] = { ...t }; });
   }
 
@@ -3120,22 +3128,25 @@ async function saveAllPGAScores() {
 // PLAYOFF SCORE ADMIN PANEL
 // ══════════════════════════════════════════════════════
 function renderPlayoffAdminPanel() {
-  // Collect all drafted sport teams from BOTH active room AND finalized drafts
+  // Collect all drafted sport teams from BOTH active room AND finalized drafts.
+  // Limited to SCORE_EDIT_LEAGUES; World Cup is edited in the Edit Scores modal instead.
+  const editable = (lg) => SCORE_EDIT_LEAGUES.includes(lg) && lg !== 'wc';
   const allDraftedTeams = {}; // teamId -> { team, league, sources: [draftId] }
 
   // From active room
   toArray(ROOM.picks).forEach(pk => {
-    if (pk && pk.team && pk.league && pk.league !== 'pga') {
+    if (pk && pk.team && pk.league && editable(pk.league)) {
       if (!allDraftedTeams[pk.team.id]) allDraftedTeams[pk.team.id] = { ...pk.team, league: pk.league, sources: [] };
       allDraftedTeams[pk.team.id].sources.push('room:' + ME.roomCode);
     }
   });
 
-  // From finalized drafts (loaded into window.finalizedDraftCache during renderFinalizedDrafts)
+  // From finalized drafts (skip ones removed from the scoreboard via "Remove Event")
   const fdCache = window.finalizedDraftCache || {};
   Object.entries(fdCache).forEach(([draftId, draft]) => {
+    if (!draft || draft.status === 'closed') return;
     toArray(draft.picks).forEach(pk => {
-      if (pk && pk.team && pk.league && pk.league !== 'pga') {
+      if (pk && pk.team && pk.league && editable(pk.league)) {
         if (!allDraftedTeams[pk.team.id]) allDraftedTeams[pk.team.id] = { ...pk.team, league: pk.league, sources: [] };
         allDraftedTeams[pk.team.id].sources.push('draft:' + draftId);
       }
@@ -3143,7 +3154,8 @@ function renderPlayoffAdminPanel() {
   });
 
   const teams = Object.values(allDraftedTeams);
-  if (!teams.length) return;
+  const existing = document.getElementById('playoff-admin-panel');
+  if (!teams.length) { if (existing) existing.innerHTML = ''; return; }
 
   // Find or create panel — place it after sb-hardcoded-drafts
   let panel = document.getElementById('playoff-admin-panel');
