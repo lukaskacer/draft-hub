@@ -908,7 +908,7 @@ let livePlayoff = {};
 let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1};
 // Which leagues appear in the score-editing tools (Edit Scores modal + Edit Playoff Results panel).
 // NHL is intentionally excluded. Add 'wc' here once the real World Cup draft is finalized.
-let SCORE_EDIT_LEAGUES = ['nba'];
+let SCORE_EDIT_LEAGUES = ['wc'];
 console.log('[Draft Hub] Score-edit leagues enabled:', SCORE_EDIT_LEAGUES.join(', ') || '(none)');
 let fetching = false;
 
@@ -2511,26 +2511,6 @@ async function enterViewOnly() {
 // ══════════════════════════════════════════════════════
 const UPCOMING_EVENTS = [
   {
-    name: 'NBA Playoffs 2026',
-    sport: 'NBA', emoji: '🏀',
-    venue: 'Various Arenas', location: 'USA',
-    startDate: new Date('2026-04-18'),
-    endDate: new Date('2026-06-21'),
-    color: 'var(--nba)',
-    colorBg: 'rgba(201,70,61,.08)',
-    note: 'First round begins mid-April'
-  },
-  {
-    name: 'NHL Playoffs 2026',
-    sport: 'NHL', emoji: '🏒',
-    venue: 'Various Arenas', location: 'USA & Canada',
-    startDate: new Date('2026-04-20'),
-    endDate: new Date('2026-06-20'),
-    color: 'var(--nhl)',
-    colorBg: 'rgba(26,106,191,.08)',
-    note: 'Stanley Cup Playoffs'
-  },
-  {
     name: 'PGA Championship 2026',
     sport: 'PGA', emoji: '⛳',
     venue: 'Aronimink Golf Club', location: 'Newton Square, PA',
@@ -2569,6 +2549,26 @@ const UPCOMING_EVENTS = [
     color: 'var(--pga)',
     colorBg: 'rgba(42,158,79,.08)',
     note: 'The Claret Jug · 154th Open'
+  },
+  {
+    name: 'College Football 2026',
+    sport: 'NCAAF', emoji: '🏈',
+    venue: 'Campus Sites & Bowls', location: 'USA',
+    startDate: new Date('2026-08-29'),
+    endDate: new Date('2027-01-25'),
+    color: '#a02c3a',
+    colorBg: 'rgba(160,44,58,.08)',
+    note: 'Week 1 → CFP Title (Allegiant Stadium)'
+  },
+  {
+    name: 'NFL Season 2026',
+    sport: 'NFL', emoji: '🏈',
+    venue: 'NFL Stadiums', location: 'USA',
+    startDate: new Date('2026-09-10'),
+    endDate: new Date('2027-02-14'),
+    color: 'var(--nfl)',
+    colorBg: 'rgba(31,62,122,.08)',
+    note: 'Kickoff → Super Bowl LXI (SoFi Stadium)'
   }
 ];
 
@@ -2909,8 +2909,9 @@ function renderScoreEditModalBody() {
     }));
   }
 
-  // Fallback for World Cup — if WC editing is enabled and it's in the draft but no picks resolved
-  if (WC_ENABLED && !Object.keys(allWCTeams).length && (ROOM.leagues||[]).includes('wc')) {
+  // Fallback for World Cup — if WC editing is enabled but no drafted WC picks were
+  // resolved, surface all 48 teams from the pool so every team is editable.
+  if (WC_ENABLED && !Object.keys(allWCTeams).length) {
     (TEAMS.wc||[]).forEach(t => { allWCTeams[t.id] = { ...t }; });
   }
 
