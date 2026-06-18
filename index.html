@@ -965,7 +965,7 @@ let livePlayoff = {};
 let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1};
 // Which leagues appear in the score-editing tools (Edit Scores modal + Edit Playoff Results panel).
 // NHL is intentionally excluded. Add 'wc' here once the real World Cup draft is finalized.
-let SCORE_EDIT_LEAGUES = ['wc'];
+let SCORE_EDIT_LEAGUES = ['wc', 'pga'];
 console.log('[Draft Hub] Score-edit leagues enabled:', SCORE_EDIT_LEAGUES.join(', ') || '(none)');
 let fetching = false;
 
@@ -2946,6 +2946,7 @@ function renderScoreEditModalBody() {
     toArray(picks).forEach(pk => {
       if (!pk || !pk.team || !pk.league) return;
       if (pk.league === 'wc') { if (WC_ENABLED) allWCTeams[pk.team.id] = { ...pk.team }; return; }
+      if (pk.league === 'pga' && SCORE_EDIT_LEAGUES.includes('pga')) { allGolfers[pk.team.id] = { ...pk.team }; return; }
       if (!EDIT_LEAGUES.includes(pk.league)) return;
       allSportTeams[pk.team.id] = { team: pk.team, league: pk.league };
     });
@@ -2970,6 +2971,12 @@ function renderScoreEditModalBody() {
   // resolved, surface all 48 teams from the pool so every team is editable.
   if (WC_ENABLED && !Object.keys(allWCTeams).length) {
     (TEAMS.wc||[]).forEach(t => { allWCTeams[t.id] = { ...t }; });
+  }
+
+  // Fallback for PGA — if pga editing is enabled but no drafted golfer picks were
+  // resolved, surface all golfers from the pool so every golfer is editable.
+  if (SCORE_EDIT_LEAGUES.includes('pga') && !Object.keys(allGolfers).length) {
+    (TEAMS.pga||[]).forEach(g => { allGolfers[g.id] = { ...g }; });
   }
 
   const wcTeams = Object.values(allWCTeams);
