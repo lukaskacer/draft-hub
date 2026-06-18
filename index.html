@@ -2937,16 +2937,17 @@ function renderScoreEditModalBody() {
   const allGolfers    = {};  // id -> {golfer}
 
   // Leagues that can have scores edited here (driven by SCORE_EDIT_LEAGUES).
-  // NHL teams and golfers are intentionally excluded; World Cup has its own section below.
-  const EDIT_LEAGUES = SCORE_EDIT_LEAGUES.filter(l => l !== 'wc');
-  const WC_ENABLED = SCORE_EDIT_LEAGUES.includes('wc');
-  const allWCTeams = {}; // id -> team (World Cup)
+  // PGA and World Cup have their own dedicated sections; all others use the playoff sport section.
+  const EDIT_LEAGUES = SCORE_EDIT_LEAGUES.filter(l => l !== 'wc' && l !== 'pga');
+  const WC_ENABLED  = SCORE_EDIT_LEAGUES.includes('wc');
+  const PGA_ENABLED = SCORE_EDIT_LEAGUES.includes('pga');
+  const allWCTeams  = {}; // id -> team (World Cup)
 
   function collectPicks(picks) {
     toArray(picks).forEach(pk => {
       if (!pk || !pk.team || !pk.league) return;
-      if (pk.league === 'wc') { if (WC_ENABLED) allWCTeams[pk.team.id] = { ...pk.team }; return; }
-      if (pk.league === 'pga' && SCORE_EDIT_LEAGUES.includes('pga')) { allGolfers[pk.team.id] = { ...pk.team }; return; }
+      if (pk.league === 'wc')  { if (WC_ENABLED)  allWCTeams[pk.team.id] = { ...pk.team }; return; }
+      if (pk.league === 'pga') { if (PGA_ENABLED) allGolfers[pk.team.id] = { ...pk.team }; return; }
       if (!EDIT_LEAGUES.includes(pk.league)) return;
       allSportTeams[pk.team.id] = { team: pk.team, league: pk.league };
     });
@@ -2974,8 +2975,8 @@ function renderScoreEditModalBody() {
   }
 
   // Fallback for PGA — if pga editing is enabled but no drafted golfer picks were
-  // resolved, surface all golfers from the pool so every golfer is editable.
-  if (SCORE_EDIT_LEAGUES.includes('pga') && !Object.keys(allGolfers).length) {
+  // found, surface all golfers from the pool so every golfer is editable.
+  if (PGA_ENABLED && !Object.keys(allGolfers).length) {
     (TEAMS.pga||[]).forEach(g => { allGolfers[g.id] = { ...g }; });
   }
 
