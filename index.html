@@ -965,7 +965,7 @@ let livePlayoff = {};
 let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1};
 // Which leagues appear in the score-editing tools (Edit Scores modal + Edit Playoff Results panel).
 // NHL is intentionally excluded. Add 'wc' here once the real World Cup draft is finalized.
-let SCORE_EDIT_LEAGUES = ['wc', 'pga'];
+let SCORE_EDIT_LEAGUES = ['wc'];
 console.log('[Draft Hub] Score-edit leagues enabled:', SCORE_EDIT_LEAGUES.join(', ') || '(none)');
 let fetching = false;
 
@@ -3636,11 +3636,17 @@ async function renderFinalizedDrafts() {
                     // For PGA apply cut penalty for display
                     const rawTp = sc?.toPar;
                     const effectiveTp = rawTp != null ? (sc?.cut ? rawTp + 6 : rawTp) : null;
+                    // WC points include group-stage bonuses, so wins-only would read blank during the group stage — show earned points instead.
+                    const wcPts = pk.league === 'wc' ? getPlayoffPts(pk.team.id, 'wc') : 0;
                     const score = pk.league === 'pga'
                       ? (effectiveTp != null ? (effectiveTp === 0 ? 'E' : (effectiveTp > 0 ? '+' : '') + effectiveTp) : '—')
+                      : pk.league === 'wc'
+                      ? (wcPts > 0 ? fmtPts(wcPts) : (elim ? 'OUT' : '—'))
                       : (wins > 0 ? wins + 'W' : '—');
                     const col = pk.league === 'pga'
                       ? (effectiveTp != null ? (effectiveTp < 0 ? 'var(--success)' : effectiveTp > 0 ? 'var(--danger)' : 'var(--muted)') : 'var(--muted)')
+                      : pk.league === 'wc'
+                      ? (wcPts > 0 ? 'var(--success)' : elim ? 'var(--danger)' : 'var(--muted)')
                       : (elim ? 'var(--danger)' : wins > 0 ? 'var(--success)' : 'var(--muted)');
                     return `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border);display:flex;gap:3px;align-items:center">
                       ${label}
