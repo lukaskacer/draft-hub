@@ -1731,7 +1731,8 @@ function renderScoreboard(){
             const champ=wins[4]>0;
             const grpLabel=grp==='won'?'Won Group':grp==='second'?'2nd in Group':grp==='wildcard'?'Wildcard':null;
             const hasData=!!grp||rnd>0||eliminated;
-            const struck=eliminated&&!champ&&pts===0;
+            const elimActive=eliminated&&!champ;
+            const struck=elimActive&&pts===0;
             return `<div class="sb-row" style="${struck?'opacity:.7':''}">
               <div style="flex:1">
                 <div class="sb-tname" style="${struck?'text-decoration:line-through;color:var(--muted)':''}">${teamLabel(pk.team,pk.league)}</div>
@@ -1747,7 +1748,7 @@ function renderScoreboard(){
                 </div>
               </div>
               <div style="text-align:right;flex-shrink:0">
-                <div class="sb-score" style="color:${pts>0?'var(--accent)':'var(--muted)'}">${pts>0?fmtPts(pts):'—'}</div>
+                <div class="sb-score" style="color:${elimActive?'var(--danger)':pts>0?'var(--accent)':'var(--muted)'}">${pts>0?fmtPts(pts):(elimActive?'OUT':'—')}</div>
                 <div style="font-size:10px;color:var(--muted)">${LNAME.wc}</div>
               </div>
             </div>`;
@@ -3647,7 +3648,7 @@ async function renderFinalizedDrafts() {
                     const col = pk.league === 'pga'
                       ? (effectiveTp != null ? (effectiveTp < 0 ? 'var(--success)' : effectiveTp > 0 ? 'var(--danger)' : 'var(--muted)') : 'var(--muted)')
                       : pk.league === 'wc'
-                      ? (wcPts > 0 ? 'var(--success)' : elim ? 'var(--danger)' : 'var(--muted)')
+                      ? (elim ? 'var(--danger)' : wcPts > 0 ? 'var(--success)' : 'var(--muted)')
                       : (elim ? 'var(--danger)' : wins > 0 ? 'var(--success)' : 'var(--muted)');
                     return `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border);display:flex;gap:3px;align-items:center">
                       ${label}
