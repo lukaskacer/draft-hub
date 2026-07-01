@@ -1731,7 +1731,7 @@ function renderScoreboard(){
             const champ=wins[4]>0;
             const grpLabel=grp==='won'?'Won Group':grp==='second'?'2nd in Group':grp==='wildcard'?'Wildcard':null;
             const hasData=!!grp||rnd>0||eliminated;
-            const struck=eliminated&&!champ;
+            const struck=eliminated&&!champ&&pts===0;
             return `<div class="sb-row" style="${struck?'opacity:.7':''}">
               <div style="flex:1">
                 <div class="sb-tname" style="${struck?'text-decoration:line-through;color:var(--muted)':''}">${teamLabel(pk.team,pk.league)}</div>
@@ -1759,10 +1759,11 @@ function renderScoreboard(){
             const pts=getPlayoffPts(pk.team?.id,pk.league);
             const rnd=wins.filter(w=>w>0).length;
             const eliminated = d?.eliminated || false;
+            const struck = eliminated && pts===0;
             const tid = pk.team.id.replace(/[^a-zA-Z0-9]/g,'-');
-            return `<div class="sb-row" style="${eliminated?'opacity:.7':''}">
+            return `<div class="sb-row" style="${struck?'opacity:.7':''}">
               <div style="flex:1">
-                <div class="sb-tname" style="${eliminated?'text-decoration:line-through;color:var(--muted)':''}">${teamLabel(pk.team,pk.league)}</div>
+                <div class="sb-tname" style="${struck?'text-decoration:line-through;color:var(--muted)':''}">${teamLabel(pk.team,pk.league)}</div>
                 <div class="sb-detail" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:3px">
                   ${eliminated
                     ? `<span style="background:rgba(255,92,92,.15);color:var(--danger);font-size:10px;padding:1px 6px;border-radius:8px;font-weight:700">☠ Eliminated</span>
