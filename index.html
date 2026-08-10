@@ -3509,6 +3509,11 @@ async function restoreDraft(draftId) {
 // Track which finalized draft cards are expanded
 const fdExpanded = {};
 
+// Set to false to hide all finalized draft cards on the Scoreboard tab.
+// Data stays in Firebase and the admin/edit tools still work — only the
+// Scoreboard rendering is suppressed. Flip to true to bring the cards back.
+const SHOW_FINALIZED_DRAFTS = false;
+
 async function renderFinalizedDrafts() {
   const el = document.getElementById('sb-finalized-drafts');
   if (!el) return;
@@ -3534,6 +3539,10 @@ async function renderFinalizedDrafts() {
 
     // Cache for admin panel
     window.finalizedDraftCache = snap.val() || {};
+
+    // Cards are hidden on the Scoreboard tab — cache is still populated above
+    // so Edit Scores / Edit Playoff Results / admin tools keep working.
+    if (!SHOW_FINALIZED_DRAFTS) { el.innerHTML = ''; return; }
 
     const allDrafts = Object.values(snap.val() || {});
     const drafts = allDrafts
