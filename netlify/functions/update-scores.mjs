@@ -16,20 +16,11 @@
 import admin from 'firebase-admin';
 import {
   LEAGUES,
-  TEAM_ID_MAP,
   isLeagueInSeason,
   getStandings,
   getGolfLeaderboard,
+  findGolfMajor,
 } from './lib/espn.mjs';
-
-// Mirror of index.html MAJORS (id + ESPN event id). Keep in sync when the
-// season's majors change.
-const MAJORS = [
-  { id: 'masters2027',   espnId: null, start: '2027-04-08', end: '2027-04-11' },
-  { id: 'pga2027',       espnId: null, start: '2027-05-20', end: '2027-05-23' },
-  { id: 'usopen2027',    espnId: null, start: '2027-06-17', end: '2027-06-20' },
-  { id: 'theopen2027',   espnId: null, start: '2027-07-15', end: '2027-07-18' },
-];
 
 // ── Firebase ────────────────────────────────────────────────────────────────
 let dbInstance = null;
@@ -77,29 +68,32 @@ async function updateStandings(only) {
 
 async function updateGolf(forceEventId) {
   const summary = {};
-  const now = new Date();
-  const targets = forceEventId
-    ? [{ id: 'adhoc', espnId: forceEventId }]
-    : MAJORS.filter((m) => m.espnId && withinWindow(m, now));
-  for (const m of targets) {
+
+  // Which event + which golfScores/{majorId} key to write.
+  let target = null;
+  if (forceEventId) {
+    target = { majorId: 'adhoc', espnId: forceEventId };
+  } else {
     try {
-      const { scores } = await getGolfLeaderboard(m.espnId);
-      const ids = Object.keys(scores);
-      if (!ids.length) { summary[m.id] = 'no data'; continue; }
-      await db().ref(`golfScores/${m.id}`).set(scores);
-      summary[m.id] = ids.length;
+      target = await findGolfMajor(); // auto-discovered; null outside major weeks
     } catch (err) {
-      summary[m.id] = `error: ${err.message}`;
+      return { golf: { discover: `error: ${err.message}` } };
     }
   }
-  return { golf: summary };
-}
+  if (!target) return { golf: 'no active major' };
 
-function withinWindow(m, now) {
-  const start = new Date(m.start + 'T00:00:00Z');
-  const end = new Date(m.end + 'T23:59:59Z');
-  const grace = 2 * 24 * 3600 * 1000; // keep polling 2 days after finish
-  return now >= new Date(start - grace) && now <= new Date(+end + grace);
+  try {
+    const { scores } = await getGolfLeaderboard(target.espnId);
+    const ids = Object.keys(scores);
+    if (!ids.length) { summary[target.majorId] = 'no data'; }
+    else {
+      await db().ref(`golfScores/${target.majorId}`).set(scores);
+      summary[target.majorId] = ids.length;
+    }
+  } catch (err) {
+    summary[target.majorId] = `error: ${err.message}`;
+  }
+  return { golf: summary };
 }
 
 async function runAll(opts = {}) {

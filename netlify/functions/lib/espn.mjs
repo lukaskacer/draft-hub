@@ -141,6 +141,45 @@ export function normalizeGolfer(name) {
     .replace(/[^a-z]/g, '');
 }
 
+// The four men's majors, matched against ESPN event names. The `id` becomes
+// `<id><year>` (e.g. masters2027) which is exactly the id index.html's MAJORS use.
+const MAJOR_PATTERNS = [
+  { id: 'masters', re: /masters/i },
+  { id: 'pga', re: /^pga championship$/i },
+  { id: 'usopen', re: /u\.?s\.? open/i },
+  { id: 'theopen', re: /^the open$|open championship/i },
+];
+
+// Look at the current golf scoreboard (and a date window around `now`) for a
+// men's major that is in progress or recently finished. Returns
+// { majorId, espnId, name, state } or null — no hardcoded event ids needed.
+export async function findGolfMajor(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => `${d.getFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+  const from = new Date(+now - 9 * 864e5);
+  const to = new Date(+now + 2 * 864e5);
+
+  const urls = [
+    'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard',
+    `https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?dates=${ymd(from)}-${ymd(to)}`,
+  ];
+
+  for (const url of urls) {
+    let events = [];
+    try { events = (await fetchJSON(url))?.events || []; } catch { continue; }
+    for (const e of events) {
+      const name = e.name || e.shortName || '';
+      const match = MAJOR_PATTERNS.find((m) => m.re.test(name));
+      if (!match) continue;
+      const state = e.status?.type?.state || e.competitions?.[0]?.status?.type?.state || 'pre';
+      if (state === 'pre') continue; // not started yet — nothing to pull
+      const year = new Date(e.date || e.endDate || now).getFullYear();
+      return { majorId: `${match.id}${year}`, espnId: String(e.id), name, state };
+    }
+  }
+  return null;
+}
+
 export async function getGolfLeaderboard(espnEventId) {
   const url = `https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${espnEventId}`;
   const data = await fetchJSON(url);
