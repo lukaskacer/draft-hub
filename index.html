@@ -15,6 +15,7 @@
   --accent:#e8ff3c;--accent2:#3ce8ff;--text:#f0f2f8;--muted:#7a8199;
   --danger:#ff5c5c;--success:#3ce89a;--warn:#ffb347;
   --nba:#c9463d;--nhl:#1a6abf;--nfl:#1f3e7a;--cbb:#e87c2a;--pga:#2a9e4f;--wc:#7c5cff;
+  --mlb:#3c8fe8;--cfb:#a02c3a;
 }
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
 .bebas{font-family:'Bebas Neue',sans-serif;letter-spacing:.05em}
@@ -120,6 +121,8 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 .lcard.sel-cbb{border-color:var(--cbb);background:rgba(232,124,42,.1)}
 .lcard.sel-pga{border-color:var(--pga);background:rgba(42,158,79,.1)}
 .lcard.sel-wc{border-color:var(--wc);background:rgba(124,92,255,.12)}
+.lcard.sel-mlb{border-color:var(--mlb);background:rgba(60,143,232,.1)}
+.lcard.sel-cfb{border-color:var(--cfb);background:rgba(160,44,58,.1)}
 .lcard-emoji{font-size:20px;margin-bottom:3px}
 .lcard-name{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.06em}
 .lcard-sub{font-size:10px;color:var(--muted)}
@@ -187,6 +190,8 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 .tag-cbb{background:rgba(232,124,42,.2);color:#f5a96a}
 .tag-pga{background:rgba(42,158,79,.2);color:#6dd99a}
 .tag-wc{background:rgba(124,92,255,.2);color:#b3a0ff}
+.tag-mlb{background:rgba(60,143,232,.2);color:#8fc0f5}
+.tag-cfb{background:rgba(160,44,58,.2);color:#e0929c}
 
 /* CLOCK BANNER */
 .clock-banner{border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:12px}
@@ -387,6 +392,8 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
           <div class="lcard" id="lc-nba" onclick="hostToggleLeague('nba')"><div class="lcard-emoji">🏀</div><div class="lcard-name">NBA</div><div class="lcard-sub">Basketball</div></div>
           <div class="lcard" id="lc-nhl" onclick="hostToggleLeague('nhl')"><div class="lcard-emoji">🏒</div><div class="lcard-name">NHL</div><div class="lcard-sub">Hockey</div></div>
           <div class="lcard" id="lc-nfl" onclick="hostToggleLeague('nfl')"><div class="lcard-emoji">🏈</div><div class="lcard-name">NFL</div><div class="lcard-sub">Football</div></div>
+          <div class="lcard" id="lc-cfb" onclick="hostToggleLeague('cfb')"><div class="lcard-emoji">🏈</div><div class="lcard-name">CFB</div><div class="lcard-sub">College Football</div></div>
+          <div class="lcard" id="lc-mlb" onclick="hostToggleLeague('mlb')"><div class="lcard-emoji">⚾</div><div class="lcard-name">MLB</div><div class="lcard-sub">Baseball</div></div>
           <div class="lcard" id="lc-cbb" onclick="hostToggleLeague('cbb')"><div class="lcard-emoji">🎓</div><div class="lcard-name">CBB</div><div class="lcard-sub">College Hoops</div></div>
           <div class="lcard" id="lc-pga" onclick="hostToggleLeague('pga')"><div class="lcard-emoji">⛳</div><div class="lcard-name">PGA</div><div class="lcard-sub">Golf Majors</div></div>
           <div class="lcard" id="lc-wc" onclick="hostToggleLeague('wc')"><div class="lcard-emoji">⚽</div><div class="lcard-name">World Cup</div><div class="lcard-sub">2026 · 48 Teams</div></div>
@@ -408,6 +415,15 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
           </div>
           <div><div class="field-lbl">Picks Per Participant</div>
             <input type="number" id="picks-per" value="5" min="1" max="30" class="field-inp" onchange="pushSettings()"/>
+          </div>
+        </div>
+        <div class="settings-row" style="margin-top:12px">
+          <div style="grid-column:1/-1"><div class="field-lbl">Scoring</div>
+            <select id="scoring-mode" class="field-inp" onchange="pushSettings()">
+              <option value="playoff">Playoff Bracket — round wins double each round (per Scoring tab)</option>
+              <option value="record">Regular Season Wins — total wins of your drafted teams</option>
+            </select>
+            <div style="font-size:11px;color:var(--muted);margin-top:5px" id="scoring-mode-hint"></div>
           </div>
         </div>
       </div>
@@ -453,6 +469,10 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
 
     <!-- SCORING TAB -->
     <div id="tab-scoring" style="display:none">
+      <div class="card" id="sc-record-card" style="display:none;border-color:rgba(60,232,154,.3)">
+        <div class="sec-hdr"><div class="sec-title">Regular Season Wins</div><span class="badge" style="background:rgba(60,232,154,.12);color:var(--success)">This draft</span></div>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6">Your score is the <strong>total regular-season wins</strong> of every team you drafted. Standings update automatically after each game via ESPN — no manual entry. Ties count as 0. Applies to NFL, CFB, NBA and MLB.</p>
+      </div>
       <div class="card" id="sc-playoff-card">
         <div class="sec-hdr"><div class="sec-title">Playoff Scoring</div><span class="badge host-only">Host editable</span></div>
         <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">Each round win doubles in value. Set the base points for a Round 1 win per league.</p>
@@ -495,7 +515,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
           <button class="btn btn-ghost btn-sm" id="edit-scores-btn" onclick="toggleScoreEditMode()" style="border-color:rgba(60,232,255,.3);color:var(--accent2)">✏ Edit Scores</button>
           <button class="btn btn-ghost btn-sm" id="finalize-draft-btn" onclick="finalizeDraft()" style="display:none;border-color:rgba(60,232,154,.4);color:var(--success)">✓ Finalize Draft</button>
           <button class="btn btn-ghost btn-sm" id="archive-event-btn" onclick="archiveCurrentEvent()" style="display:none;border-color:rgba(255,92,92,.4);color:var(--danger)">✕ Remove Event</button>
-          <button class="btn btn-ghost btn-sm" id="refresh-btn" onclick="triggerRefresh()">⟳ Refresh</button>
+          <button class="btn btn-ghost btn-sm" id="refresh-btn" onclick="triggerRefresh(true)">⟳ Refresh</button>
         </div>
       </div>
       <!-- Winner banner — shown when draft is complete -->
@@ -557,7 +577,7 @@ main{padding:20px;max-width:1100px;margin:0 auto;width:100%}
     <div id="tab-upcoming" style="display:none">
       <div class="sec-hdr" style="margin-bottom:20px">
         <div class="sec-title">Upcoming Events</div>
-        <span class="badge">2026 Season</span>
+        <span class="badge">2026–27</span>
       </div>
       <div id="upcoming-grid" class="upcoming-grid"></div>
     </div>
@@ -625,10 +645,20 @@ const MAJORS = [
   {id:'masters2026',name:'The Masters',venue:'Augusta National',location:'Augusta, GA',dates:'Apr 9–12, 2026',start:new Date('2026-04-09'),end:new Date('2026-04-12'),espnId:'401811941'},
   {id:'pga2026',name:'PGA Championship',venue:'Aronimink GC',location:'Newton Square, PA',dates:'May 14–17, 2026',start:new Date('2026-05-14'),end:new Date('2026-05-17'),espnId:'401811947'},
   {id:'usopen2026',name:'US Open',venue:'Shinnecock Hills',location:'Southampton, NY',dates:'Jun 18–21, 2026',start:new Date('2026-06-18'),end:new Date('2026-06-21'),espnId:'401811952'},
-  {id:'theopen2026',name:'The Open Championship',venue:'Royal Birkdale',location:'Southport, England',dates:'Jul 16–19, 2026',start:new Date('2026-07-16'),end:new Date('2026-07-19'),espnId:'401811957'}
+  {id:'theopen2026',name:'The Open Championship',venue:'Royal Birkdale',location:'Southport, England',dates:'Jul 16–19, 2026',start:new Date('2026-07-16'),end:new Date('2026-07-19'),espnId:'401811957'},
+  // 2027 majors — espnId filled in closer to each event (see netlify/functions/update-scores.mjs MAJORS)
+  {id:'masters2027',name:'The Masters',venue:'Augusta National',location:'Augusta, GA',dates:'Apr 8–11, 2027',start:new Date('2027-04-08'),end:new Date('2027-04-11'),espnId:null},
+  {id:'pga2027',name:'PGA Championship',venue:'Fields Ranch East',location:'Frisco, TX',dates:'May 20–23, 2027',start:new Date('2027-05-20'),end:new Date('2027-05-23'),espnId:null},
+  {id:'usopen2027',name:'US Open',venue:'Pebble Beach',location:'Pebble Beach, CA',dates:'Jun 17–20, 2027',start:new Date('2027-06-17'),end:new Date('2027-06-20'),espnId:null},
+  {id:'theopen2027',name:'The Open Championship',venue:'The Old Course, St Andrews',location:'Fife, Scotland',dates:'Jul 15–18, 2027',start:new Date('2027-07-15'),end:new Date('2027-07-18'),espnId:null}
 ];
-const LCOL={nba:'var(--nba)',nhl:'var(--nhl)',nfl:'var(--nfl)',cbb:'var(--cbb)',pga:'var(--pga)',wc:'var(--wc)'};
-const LNAME={nba:'NBA',nhl:'NHL',nfl:'NFL',cbb:'CBB',pga:'PGA',wc:'World Cup'};
+const LCOL={nba:'var(--nba)',nhl:'var(--nhl)',nfl:'var(--nfl)',cbb:'var(--cbb)',pga:'var(--pga)',wc:'var(--wc)',mlb:'var(--mlb)',cfb:'var(--cfb)'};
+const LNAME={nba:'NBA',nhl:'NHL',nfl:'NFL',cbb:'CBB',pga:'PGA',wc:'World Cup',mlb:'MLB',cfb:'CFB'};
+// Leagues that support "Regular Season Wins" scoring (need full team lists + ESPN standings).
+const RECORD_LEAGUES=['nfl','cfb','nba','mlb'];
+// Only these names may log / edit All Time Results. Matched case-insensitively.
+const ADMIN_NAMES=['lukas'];
+function canLogResults(){ return ADMIN_NAMES.includes((ME.name||'').trim().toLowerCase()); }
 // Unified team label: PGA shows player name; World Cup shows "Country (Group)"; others show "City Name"
 function teamLabel(team, league){
   if(!team) return '';
@@ -640,7 +670,9 @@ const PLAYOFF={
   nba:{rounds:4,names:['First Round','Conf Semis','Conf Finals','NBA Finals'],base:1},
   nhl:{rounds:4,names:['First Round','Conf Semis','Conf Finals','Stanley Cup Final'],base:1},
   nfl:{rounds:4,names:['Wild Card','Divisional','Conf Championship','Super Bowl'],base:1},
-  cbb:{rounds:6,names:['R64','R32','Sweet 16','Elite Eight','Final Four','Championship'],base:1}
+  cbb:{rounds:6,names:['R64','R32','Sweet 16','Elite Eight','Final Four','Championship'],base:1},
+  mlb:{rounds:4,names:['Wild Card','Div Series','LCS','World Series'],base:1},
+  cfb:{rounds:4,names:['First Round','Quarterfinal','Semifinal','Natl Championship'],base:1}
 };
 // World Cup uses the same doubling-bracket model (R32=1, R16=2, QF=4, SF=8, Final/Champion=16),
 // plus a group-stage result handled separately in getPlayoffPts (win group=1, 2nd/wildcard=0.5).
@@ -728,6 +760,73 @@ const TEAMS={
     {id:'ark',name:'Razorbacks',city:'Arkansas'},{id:'okl',name:'Sooners',city:'Oklahoma'},
     {id:'mar',name:'Terrapins',city:'Maryland'},{id:'vil',name:'Wildcats',city:'Villanova'},
     {id:'kst',name:'Wildcats',city:'Kansas St.'},{id:'wvu',name:'Mountaineers',city:'West Virginia'}
+  ],
+  mlb:[
+    // All 30 MLB clubs — ids match netlify/functions/lib/espn.mjs TEAM_ID_MAP.mlb
+    {id:'ari-m',name:'Diamondbacks',city:'Arizona'},{id:'atl-m',name:'Braves',city:'Atlanta'},
+    {id:'bal-m',name:'Orioles',city:'Baltimore'},{id:'bos-m',name:'Red Sox',city:'Boston'},
+    {id:'chc-m',name:'Cubs',city:'Chicago'},{id:'cws-m',name:'White Sox',city:'Chicago'},
+    {id:'cin-m',name:'Reds',city:'Cincinnati'},{id:'cle-m',name:'Guardians',city:'Cleveland'},
+    {id:'col-m',name:'Rockies',city:'Colorado'},{id:'det-m',name:'Tigers',city:'Detroit'},
+    {id:'hou-m',name:'Astros',city:'Houston'},{id:'kc-m',name:'Royals',city:'Kansas City'},
+    {id:'laa-m',name:'Angels',city:'LA'},{id:'lad-m',name:'Dodgers',city:'LA'},
+    {id:'mia-m',name:'Marlins',city:'Miami'},{id:'mil-m',name:'Brewers',city:'Milwaukee'},
+    {id:'min-m',name:'Twins',city:'Minnesota'},{id:'nym-m',name:'Mets',city:'New York'},
+    {id:'nyy-m',name:'Yankees',city:'New York'},{id:'ath-m',name:'Athletics',city:'Athletics'},
+    {id:'phi-m',name:'Phillies',city:'Philadelphia'},{id:'pit-m',name:'Pirates',city:'Pittsburgh'},
+    {id:'sd-m',name:'Padres',city:'San Diego'},{id:'sf-m',name:'Giants',city:'San Francisco'},
+    {id:'sea-m',name:'Mariners',city:'Seattle'},{id:'stl-m',name:'Cardinals',city:'St. Louis'},
+    {id:'tb-m',name:'Rays',city:'Tampa Bay'},{id:'tex-m',name:'Rangers',city:'Texas'},
+    {id:'tor-m',name:'Blue Jays',city:'Toronto'},{id:'wsh-m',name:'Nationals',city:'Washington'}
+  ],
+  cfb:[
+    // All FBS programs — ids <espnabbr>-cf, matched in espn.mjs TEAM_ID_MAP.cfb
+    {id:'afa-cf',name:"Falcons",city:"Air Force"},{id:'akr-cf',name:"Zips",city:"Akron"},{id:'ala-cf',name:"Crimson Tide",city:"Alabama"},
+    {id:'app-cf',name:"Mountaineers",city:"App State"},{id:'ariz-cf',name:"Wildcats",city:"Arizona"},{id:'asu-cf',name:"Sun Devils",city:"Arizona State"},
+    {id:'ark-cf',name:"Razorbacks",city:"Arkansas"},{id:'arst-cf',name:"Red Wolves",city:"Arkansas State"},{id:'army-cf',name:"Black Knights",city:"Army"},
+    {id:'aub-cf',name:"Tigers",city:"Auburn"},{id:'ball-cf',name:"Cardinals",city:"Ball State"},{id:'bay-cf',name:"Bears",city:"Baylor"},
+    {id:'bois-cf',name:"Broncos",city:"Boise State"},{id:'bc-cf',name:"Eagles",city:"Boston College"},{id:'bgsu-cf',name:"Falcons",city:"Bowling Green"},
+    {id:'buff-cf',name:"Bulls",city:"Buffalo"},{id:'byu-cf',name:"Cougars",city:"BYU"},{id:'cal-cf',name:"Golden Bears",city:"California"},
+    {id:'cmu-cf',name:"Chippewas",city:"Central Michigan"},{id:'clt-cf',name:"49ers",city:"Charlotte"},{id:'cin-cf',name:"Bearcats",city:"Cincinnati"},
+    {id:'clem-cf',name:"Tigers",city:"Clemson"},{id:'ccu-cf',name:"Chanticleers",city:"Coastal Carolina"},{id:'colo-cf',name:"Buffaloes",city:"Colorado"},
+    {id:'csu-cf',name:"Rams",city:"Colorado State"},{id:'del-cf',name:"Blue Hens",city:"Delaware"},{id:'duke-cf',name:"Blue Devils",city:"Duke"},
+    {id:'ecu-cf',name:"Pirates",city:"East Carolina"},{id:'emu-cf',name:"Eagles",city:"Eastern Michigan"},{id:'fla-cf',name:"Gators",city:"Florida"},
+    {id:'fau-cf',name:"Owls",city:"Florida Atlantic"},{id:'fiu-cf',name:"Panthers",city:"Florida International"},{id:'fsu-cf',name:"Seminoles",city:"Florida State"},
+    {id:'fres-cf',name:"Bulldogs",city:"Fresno State"},{id:'uga-cf',name:"Bulldogs",city:"Georgia"},{id:'gaso-cf',name:"Eagles",city:"Georgia Southern"},
+    {id:'gast-cf',name:"Panthers",city:"Georgia State"},{id:'gt-cf',name:"Yellow Jackets",city:"Georgia Tech"},{id:'haw-cf',name:"Rainbow Warriors",city:"Hawai'i"},
+    {id:'hou-cf',name:"Cougars",city:"Houston"},{id:'ill-cf',name:"Fighting Illini",city:"Illinois"},{id:'iu-cf',name:"Hoosiers",city:"Indiana"},
+    {id:'iowa-cf',name:"Hawkeyes",city:"Iowa"},{id:'isu-cf',name:"Cyclones",city:"Iowa State"},{id:'jvst-cf',name:"Gamecocks",city:"Jacksonville State"},
+    {id:'jmu-cf',name:"Dukes",city:"James Madison"},{id:'ku-cf',name:"Jayhawks",city:"Kansas"},{id:'ksu-cf',name:"Wildcats",city:"Kansas State"},
+    {id:'kenn-cf',name:"Owls",city:"Kennesaw State"},{id:'kent-cf',name:"Golden Flashes",city:"Kent State"},{id:'uk-cf',name:"Wildcats",city:"Kentucky"},
+    {id:'lib-cf',name:"Flames",city:"Liberty"},{id:'ul-cf',name:"Ragin' Cajuns",city:"Louisiana"},{id:'lt-cf',name:"Bulldogs",city:"Louisiana Tech"},
+    {id:'lou-cf',name:"Cardinals",city:"Louisville"},{id:'lsu-cf',name:"Tigers",city:"LSU"},{id:'mrsh-cf',name:"Thundering Herd",city:"Marshall"},
+    {id:'md-cf',name:"Terrapins",city:"Maryland"},{id:'mass-cf',name:"Minutemen",city:"Massachusetts"},{id:'mem-cf',name:"Tigers",city:"Memphis"},
+    {id:'mia-cf',name:"Hurricanes",city:"Miami"},{id:'moh-cf',name:"RedHawks",city:"Miami (OH)"},{id:'mich-cf',name:"Wolverines",city:"Michigan"},
+    {id:'msu-cf',name:"Spartans",city:"Michigan State"},{id:'mtsu-cf',name:"Blue Raiders",city:"Middle Tennessee"},{id:'minn-cf',name:"Golden Gophers",city:"Minnesota"},
+    {id:'msst-cf',name:"Bulldogs",city:"Mississippi State"},{id:'miz-cf',name:"Tigers",city:"Missouri"},{id:'most-cf',name:"Bears",city:"Missouri State"},
+    {id:'navy-cf',name:"Midshipmen",city:"Navy"},{id:'ncsu-cf',name:"Wolfpack",city:"NC State"},{id:'neb-cf',name:"Cornhuskers",city:"Nebraska"},
+    {id:'nev-cf',name:"Wolf Pack",city:"Nevada"},{id:'unm-cf',name:"Lobos",city:"New Mexico"},{id:'nmsu-cf',name:"Aggies",city:"New Mexico State"},
+    {id:'unc-cf',name:"Tar Heels",city:"North Carolina"},{id:'ndsu-cf',name:"Bison",city:"North Dakota State"},{id:'unt-cf',name:"Mean Green",city:"North Texas"},
+    {id:'niu-cf',name:"Huskies",city:"Northern Illinois"},{id:'nu-cf',name:"Wildcats",city:"Northwestern"},{id:'nd-cf',name:"Fighting Irish",city:"Notre Dame"},
+    {id:'ohio-cf',name:"Bobcats",city:"Ohio"},{id:'osu-cf',name:"Buckeyes",city:"Ohio State"},{id:'ou-cf',name:"Sooners",city:"Oklahoma"},
+    {id:'okst-cf',name:"Cowboys",city:"Oklahoma State"},{id:'odu-cf',name:"Monarchs",city:"Old Dominion"},{id:'miss-cf',name:"Rebels",city:"Ole Miss"},
+    {id:'ore-cf',name:"Ducks",city:"Oregon"},{id:'orst-cf',name:"Beavers",city:"Oregon State"},{id:'psu-cf',name:"Nittany Lions",city:"Penn State"},
+    {id:'pitt-cf',name:"Panthers",city:"Pittsburgh"},{id:'pur-cf',name:"Boilermakers",city:"Purdue"},{id:'rice-cf',name:"Owls",city:"Rice"},
+    {id:'rutg-cf',name:"Scarlet Knights",city:"Rutgers"},{id:'sac-cf',name:"Hornets",city:"Sacramento State"},{id:'shsu-cf',name:"Bearkats",city:"Sam Houston"},
+    {id:'sdsu-cf',name:"Aztecs",city:"San Diego State"},{id:'sjsu-cf',name:"Spartans",city:"San José State"},{id:'smu-cf',name:"Mustangs",city:"SMU"},
+    {id:'usa-cf',name:"Jaguars",city:"South Alabama"},{id:'sc-cf',name:"Gamecocks",city:"South Carolina"},{id:'usf-cf',name:"Bulls",city:"South Florida"},
+    {id:'usm-cf',name:"Golden Eagles",city:"Southern Miss"},{id:'stan-cf',name:"Cardinal",city:"Stanford"},{id:'syr-cf',name:"Orange",city:"Syracuse"},
+    {id:'tcu-cf',name:"Horned Frogs",city:"TCU"},{id:'tem-cf',name:"Owls",city:"Temple"},{id:'tenn-cf',name:"Volunteers",city:"Tennessee"},
+    {id:'tex-cf',name:"Longhorns",city:"Texas"},{id:'tam-cf',name:"Aggies",city:"Texas A&M"},{id:'txst-cf',name:"Bobcats",city:"Texas State"},
+    {id:'ttu-cf',name:"Red Raiders",city:"Texas Tech"},{id:'tol-cf',name:"Rockets",city:"Toledo"},{id:'troy-cf',name:"Trojans",city:"Troy"},
+    {id:'tuln-cf',name:"Green Wave",city:"Tulane"},{id:'tlsa-cf',name:"Golden Hurricane",city:"Tulsa"},{id:'uab-cf',name:"Blazers",city:"UAB"},
+    {id:'ucf-cf',name:"Knights",city:"UCF"},{id:'ucla-cf',name:"Bruins",city:"UCLA"},{id:'conn-cf',name:"Huskies",city:"UConn"},
+    {id:'ulm-cf',name:"Warhawks",city:"UL Monroe"},{id:'unlv-cf',name:"Rebels",city:"UNLV"},{id:'usc-cf',name:"Trojans",city:"USC"},
+    {id:'utah-cf',name:"Utes",city:"Utah"},{id:'usu-cf',name:"Aggies",city:"Utah State"},{id:'utep-cf',name:"Miners",city:"UTEP"},
+    {id:'utsa-cf',name:"Roadrunners",city:"UTSA"},{id:'van-cf',name:"Commodores",city:"Vanderbilt"},{id:'uva-cf',name:"Cavaliers",city:"Virginia"},
+    {id:'vt-cf',name:"Hokies",city:"Virginia Tech"},{id:'wake-cf',name:"Demon Deacons",city:"Wake Forest"},{id:'wash-cf',name:"Huskies",city:"Washington"},
+    {id:'wsu-cf',name:"Cougars",city:"Washington State"},{id:'wvu-cf',name:"Mountaineers",city:"West Virginia"},{id:'wku-cf',name:"Hilltoppers",city:"Western Kentucky"},
+    {id:'wmu-cf',name:"Broncos",city:"Western Michigan"},{id:'wis-cf',name:"Badgers",city:"Wisconsin"},{id:'wyo-cf',name:"Cowboys",city:"Wyoming"}
   ],
   pga:[
     // 2026 Open Championship Field — Royal Birkdale, Jul 16-19 (156-player field)
@@ -971,7 +1070,8 @@ let ROOM = {}; // mirrors Firebase room state
 let filterLeague = null;
 let liveScores = {};
 let livePlayoff = {};
-let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1};
+let seasonRecords = {}; // { league: { teamId: {w,l,t} } } — from Netlify update-scores fn
+let playoffBase = {nba:1,nhl:1,nfl:1,cbb:1,wc:1,mlb:1,cfb:1};
 // Which leagues appear in the score-editing tools (Edit Scores modal + Edit Playoff Results panel).
 // NHL is intentionally excluded. Add 'wc' here once the real World Cup draft is finalized.
 let SCORE_EDIT_LEAGUES = ['wc', 'pga'];
@@ -1047,7 +1147,7 @@ async function createRoom(){
   const roomData = {
     draftName, host: name,
     leagues:[], selectedMajorId: null,
-    format:'snake', picksPerPerson:5,
+    format:'snake', picksPerPerson:5, scoringMode:'playoff',
     participants:{ [name]: { name, joinedAt: Date.now() } },
     picks:[], currentPick:0,
     status:'lobby', createdAt: Date.now()
@@ -1096,6 +1196,7 @@ function enterApp(code){
   renderPageNav();
   listenPlayoffScores();
   listenGlobalPlayoffScores();
+  listenSeasonRecords();
 
   // Firebase listener — react to all state changes
   db.ref('rooms/'+code).on('value', snap=>{
@@ -1150,6 +1251,7 @@ function renderSettingsReadonly(){
       <div><div style="color:var(--muted);font-size:11px;margin-bottom:3px">LEAGUES</div>${leagues}</div>
       <div><div style="color:var(--muted);font-size:11px;margin-bottom:3px">FORMAT</div>${ROOM.format==='snake'?'Snake Draft':'Linear Draft'}</div>
       <div><div style="color:var(--muted);font-size:11px;margin-bottom:3px">PICKS / PERSON</div>${ROOM.picksPerPerson}</div>
+      <div><div style="color:var(--muted);font-size:11px;margin-bottom:3px">SCORING</div>${ROOM.scoringMode==='record'?'Regular Season Wins':'Playoff Bracket'}</div>
       ${ROOM.leagues&&ROOM.leagues.includes('pga')?`<div><div style="color:var(--muted);font-size:11px;margin-bottom:3px">MAJOR</div>${major}</div>`:''}
     </div>`;
 }
@@ -1167,11 +1269,23 @@ function hostToggleLeague(l){
 
 function updateLeagueCards(){
   const leagues=ROOM.leagues||[];
-  ['nba','nhl','nfl','cbb','pga','wc'].forEach(l=>{
+  ['nba','nhl','nfl','cfb','mlb','cbb','pga','wc'].forEach(l=>{
     const el=document.getElementById('lc-'+l);
     if(el) el.className='lcard'+(leagues.includes(l)?' sel-'+l:'');
   });
   document.getElementById('lc-badge').textContent=leagues.length+' selected';
+  // Sync host scoring-mode control + hint
+  const smSel=document.getElementById('scoring-mode');
+  if(smSel){
+    if(ROOM.scoringMode && smSel.value!==ROOM.scoringMode) smSel.value=ROOM.scoringMode;
+    const hint=document.getElementById('scoring-mode-hint');
+    if(hint){
+      const nonRecord=leagues.filter(l=>!RECORD_LEAGUES.includes(l));
+      hint.textContent=(smSel.value==='record')
+        ? (nonRecord.length ? '⚠ Regular-season wins only applies to '+RECORD_LEAGUES.map(l=>LNAME[l]).join('/')+'. '+nonRecord.map(l=>LNAME[l]).join('/')+' will show 0.' : 'Live standings update automatically after each game.')
+        : '';
+    }
+  }
   document.getElementById('major-picker').style.display=leagues.includes('pga')?'block':'none';
   if(leagues.includes('pga')) updateMajorGrid();
 }
@@ -1200,7 +1314,8 @@ function hostSelectMajor(id){
 function pushSettings(){
   db.ref('rooms/'+ME.roomCode).update({
     format: document.getElementById('draft-format').value,
-    picksPerPerson: parseInt(document.getElementById('picks-per').value)||5
+    picksPerPerson: parseInt(document.getElementById('picks-per').value)||5,
+    scoringMode: document.getElementById('scoring-mode').value || 'playoff'
   });
 }
 
@@ -1365,7 +1480,11 @@ function updateClock(){
 // ══════════════════════════════════════════════════════
 function renderScoringTab(){
   // Always show all leagues regardless of current room selection
-  const ALL_SPORT_LEAGUES = ['nba','nhl','nfl','cbb'];
+  const ALL_SPORT_LEAGUES = ['nba','nhl','nfl','cfb','mlb','cbb'];
+
+  // Regular-season-wins banner
+  const rsCard=document.getElementById('sc-record-card');
+  if(rsCard) rsCard.style.display = (ROOM.scoringMode==='record') ? 'block' : 'none';
 
   // Show both cards always
   document.getElementById('sc-playoff-card').style.display = 'block';
@@ -1414,6 +1533,31 @@ function majorStatus(m){
 async function fetchPGAScores(){
   const maj=ROOM.selectedMajorId?MAJORS.find(m=>m.id===ROOM.selectedMajorId):null;
   if(!maj) return false;
+
+  // 1. Prefer Firebase golfScores/{majorId} (written by the Netlify update-scores fn).
+  try {
+    const snap=await db.ref('golfScores/'+maj.id).get();
+    if(snap.exists()){
+      const data=snap.val()||{};
+      let matched=0;
+      Object.entries(data).forEach(([gid,sc])=>{
+        const golfer=TEAMS.pga.find(g=>g.id===gid) ||
+          TEAMS.pga.find(g=>{const gn=g.name.toLowerCase().replace(/[^a-z]/g,'');return gn && gid.includes(gn.slice(-6));});
+        if(!golfer) return;
+        liveScores[golfer.id]={
+          name:sc.name||golfer.name, position:sc.position||'—',
+          toPar:sc.toPar!=null?sc.toPar:0, played:(sc.rounds||[]).length,
+          rounds:sc.rounds||[], total:sc.total!=null?sc.total:null,
+          cut:!!sc.cut, status:majorStatus(maj)
+        };
+        matched++;
+      });
+      if(matched) return true;
+    }
+  } catch(e){}
+
+  // 2. Fall back to a direct ESPN call (only works once maj.espnId is set).
+  if(!maj.espnId) return false;
   try {
     const url=`https://site.api.espn.com/apis/site/v2/sports/golf/leaderboard?event=${maj.espnId}`;
     const resp=await fetch(url);
@@ -1565,6 +1709,28 @@ function listenGlobalPlayoffScores() {
   });
 }
 
+// Season records (regular-season W/L) — written by the Netlify update-scores fn,
+// shared across all drafts. Client is read-only here.
+async function loadSeasonRecords() {
+  try {
+    const snap = await db.ref('seasonRecords').get();
+    seasonRecords = snap.exists() ? (snap.val() || {}) : {};
+    const meta = await db.ref('scoresMeta/lastRun').get();
+    if (meta.exists()) window.__scoresMeta = meta.val();
+  } catch(e) {}
+}
+function listenSeasonRecords() {
+  db.ref('scoresMeta/lastRun').on('value', s => { if (s.exists()) window.__scoresMeta = s.val(); });
+  db.ref('seasonRecords').on('value', snap => {
+    seasonRecords = snap.exists() ? (snap.val() || {}) : {};
+    const sbTab = document.getElementById('tab-scoreboard');
+    if (sbTab && sbTab.style.display !== 'none') {
+      renderScoreboard();
+      renderFinalizedDrafts();
+    }
+  });
+}
+
 // Load playoff results — try Worker first, fall back to Firebase manual entry
 async function loadPlayoffScores() {
   const sportLeagues = (ROOM.leagues || []).filter(l => l !== 'pga');
@@ -1600,22 +1766,34 @@ function listenPlayoffScores() {
   });
 }
 
-async function triggerRefresh(){
+async function triggerRefresh(force){
   if(fetching) return; fetching=true;
   const btn=document.getElementById('refresh-btn');
   if(btn) btn.textContent='⟳ Loading...';
   const hasPGA=(ROOM.leagues||[]).includes('pga');
   const hasSports=(ROOM.leagues||[]).some(l=>l!=='pga');
-  let pgaOk=false, playoffOk=false;
+  const isRecord=(ROOM.scoringMode==='record');
+  let pgaOk=false, playoffOk=false, fnOk=false;
+
+  // Ask the Netlify function to pull fresh ESPN data into Firebase. On a manual
+  // click we wait for it; on the 60s auto-tick we only re-read from cache.
+  if(force){
+    try{
+      const r=await fetch(WORKER_URL,{headers:{'cache-control':'no-cache'}});
+      fnOk=r.ok;
+    }catch(e){ console.warn('update-scores fn call failed:',e.message); }
+  }
+
   if(hasPGA){ pgaOk=await fetchPGAScores(); if(!pgaOk) pgaFallback(); }
-  // Always load global playoff scores regardless of current room leagues
   await loadGlobalPlayoffScores();
-  if(hasSports){ playoffOk=await loadPlayoffScores(); }
+  await loadSeasonRecords();
+  if(hasSports && !isRecord){ playoffOk=await loadPlayoffScores(); }
   fetching=false;
   if(btn) btn.textContent='⟳ Refresh';
   const sources=[];
+  if(isRecord) sources.push(fnOk?'⚡ Standings synced':'Standings (cached)');
   if(hasPGA) sources.push(pgaOk?'⚡ Golf live':'Golf manual');
-  if(hasSports) sources.push(playoffOk?'⚡ Playoffs live':'Playoffs manual');
+  if(hasSports && !isRecord) sources.push(playoffOk?'⚡ Playoffs live':'Playoffs manual');
   document.getElementById('sb-updated').textContent=
     (sources.length?sources.join(' · ')+' · ':'')+new Date().toLocaleTimeString();
   renderScoreboard();
@@ -1635,6 +1813,15 @@ function toArray(val) {
   return Object.keys(val).sort((a,b) => parseInt(a)-parseInt(b)).map(k => val[k]);
 }
 
+// Regular-season wins for a drafted team (scoringMode === 'record').
+function getRecordWins(id,league){
+  const r=(seasonRecords[league]||{})[id];
+  return r && typeof r.w==='number' ? r.w : 0;
+}
+function getRecord(id,league){
+  return (seasonRecords[league]||{})[id] || null;
+}
+
 function getPlayoffPts(id,league){
   const d=livePlayoff[id]; if(!d) return 0;
   const base=playoffBase[league]||1;
@@ -1651,6 +1838,95 @@ function getPlayoffPts(id,league){
 function fmtPts(n){
   if(n==null||isNaN(n)) return '0';
   return Number.isInteger(n) ? String(n) : (Math.round(n*10)/10).toString();
+}
+
+// Regular-season-wins scoreboard (scoringMode === 'record').
+function renderRecordScoreboard(picks,participants){
+  const el=document.getElementById('sb-grid');
+  const sbStatus=document.getElementById('sb-status-bar');
+  if(sbStatus){
+    sbStatus.style.display='block';
+    sbStatus.className='status-bar status-live';
+    const meta=window.__scoresMeta;
+    sbStatus.textContent='🏈 Regular Season Wins — standings auto-update after each game'+
+      (meta&&meta.at?' · synced '+new Date(meta.at).toLocaleString():'');
+  }
+
+  const byOwner={};
+  participants.forEach(p=>byOwner[p]=[]);
+  picks.forEach(pk=>{ if(pk&&pk.team) byOwner[pk.participant]?.push(pk); });
+
+  const data=participants.map(p=>{
+    const teams=byOwner[p]||[];
+    let wins=0, counted=0;
+    teams.forEach(pk=>{
+      const r=getRecord(pk.team?.id,pk.league);
+      if(r){ wins+=(r.w||0); counted++; }
+    });
+    return {participant:p,teams,wins,counted};
+  }).sort((a,b)=>b.wins-a.wins);
+
+  el.innerHTML=data.map((o,rank)=>`
+    <div class="sb-card ${rank===0?'leader':''} ${o.participant===ME.name?'me-card':''}">
+      <div class="sb-hdr">
+        <div>
+          <div class="sb-owner">${rank===0?'🏆 ':rank===1?'🥈 ':rank===2?'🥉 ':''}${o.participant}${o.participant===ME.name?' <span style="font-size:10px;color:var(--muted)">(you)</span>':''}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Rank #${rank+1} · ${o.teams.length} picks</div>
+        </div>
+        <div style="text-align:right">
+          <div class="sb-total-pts">${o.wins}<span style="font-size:10px;font-family:'DM Sans',sans-serif;color:var(--muted);margin-left:2px">wins</span></div>
+        </div>
+      </div>
+      <div class="sb-body">
+        ${o.teams.map(pk=>{
+          const r=getRecord(pk.team?.id,pk.league);
+          const supported=RECORD_LEAGUES.includes(pk.league);
+          const recStr=r?`${r.w||0}-${r.l||0}${r.t?'-'+r.t:''}`:(supported?'0-0':'n/a');
+          return `<div class="sb-row">
+            <div>
+              <div class="sb-tname">${teamLabel(pk.team,pk.league)}</div>
+              <div class="sb-detail"><span class="ltag tag-${pk.league}">${LNAME[pk.league]}</span>${!supported?' · wins not tracked':''}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="sb-score" style="color:${r&&r.w>0?'var(--accent)':'var(--muted)'}">${r?(r.w||0):(supported?'0':'—')}</div>
+              <div style="font-size:10px;color:var(--muted)">${recStr}</div>
+            </div>
+          </div>`;
+        }).join('')||'<div class="empty" style="padding:8px 0;font-size:12px">No picks yet</div>'}
+      </div>
+    </div>`).join('') || '<div class="empty" style="grid-column:1/-1">Complete the draft to see standings.</div>';
+
+  // Winner banner when every pick is in
+  const allDone=picks.length>0 && picks.every(p=>p&&p.team);
+  const banner=document.getElementById('winner-banner');
+  const winnerAction=document.getElementById('winner-action');
+  if(allDone && data.length){
+    const top=data[0];
+    banner.classList.add('show');
+    document.getElementById('winner-name-display').textContent=top.participant;
+    document.getElementById('winner-contest-display').textContent=(ROOM.draftName||'Draft')+' · '+top.wins+' wins';
+    if(ROOM.winnerLogged){
+      winnerAction.innerHTML='<div class="already-logged"><span style="font-size:16px">✓</span> Logged to All Time Results</div>';
+    } else if(canLogResults()){
+      const names=Object.values(ROOM.participants||{}).map(p=>p.name);
+      winnerAction.innerHTML=`<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+        <select class="mark-winner-select" id="winner-override-select">${names.map(p=>`<option value="${p}" ${p===top.participant?'selected':''}>${p}</option>`).join('')}</select>
+        <button class="mark-winner-btn" onclick="markWinner()">Mark Winner &amp; Log →</button></div>`;
+    } else {
+      winnerAction.innerHTML='<div style="font-size:12px;color:var(--muted)">Standings still updating<br>through the season</div>';
+    }
+  } else if(banner){ banner.classList.remove('show'); }
+
+  updateFinalizeBtn();
+  const hintEl=document.getElementById('sb-finalize-hint');
+  if(hintEl) hintEl.style.display=(ME.isHost && allDone && !ROOM.finalized)?'block':'none';
+
+  const tick=data.flatMap(o=>o.teams).filter(pk=>pk&&pk.team).slice(0,14).map(pk=>{
+    const r=getRecord(pk.team.id,pk.league);
+    return `${pk.team.name}: ${r?(r.w||0)+'W':'—'}`;
+  });
+  const tickerEl=document.getElementById('ticker');
+  if(tickerEl) tickerEl.textContent=tick.join('   ·   ')||'Standings will appear once games are played';
 }
 
 function renderScoreboard(){
@@ -1673,6 +1949,12 @@ function renderScoreboard(){
   const participants=Object.values(ROOM.participants||{}).map(p=>p.name);
   if(!participants.length||!picks.length){
     el.innerHTML='<div class="empty" style="grid-column:1/-1">Complete the draft to see scores.</div>';return;
+  }
+
+  // ── REGULAR SEASON WINS MODE ──────────────────────────
+  if(ROOM.scoringMode==='record'){
+    renderRecordScoreboard(picks,participants);
+    return;
   }
 
   const maj=ROOM.selectedMajorId?MAJORS.find(m=>m.id===ROOM.selectedMajorId):null;
@@ -1808,8 +2090,8 @@ function renderScoreboard(){
     document.getElementById('winner-contest-display').textContent = ROOM.draftName||'Draft';
     if(ROOM.winnerLogged){
       winnerAction.innerHTML = '<div class="already-logged"><span style="font-size:16px">✓</span> Logged to All Time Results</div>';
-    } else if(ME.isHost){
-      // Build participant dropdown so host can override if needed
+    } else if(canLogResults()){
+      // Build participant dropdown so the admin can override if needed
       const allParticipants = Object.values(ROOM.participants||{}).map(p=>p.name);
       winnerAction.innerHTML = `
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -1819,7 +2101,7 @@ function renderScoreboard(){
           <button class="mark-winner-btn" onclick="markWinner()">Mark Winner &amp; Log →</button>
         </div>`;
     } else {
-      winnerAction.innerHTML = '<div style="font-size:12px;color:var(--muted)">Waiting for host<br>to log result</div>';
+      winnerAction.innerHTML = '<div style="font-size:12px;color:var(--muted)">Waiting for the<br>admin to log result</div>';
     }
   } else {
     banner.classList.remove('show');
@@ -1937,6 +2219,11 @@ async function renderAllTime(){
   const lb = buildLeaderboard(results);
   const rankEmoji=['🏆','🥈','🥉'];
 
+  // Only the admin (see ADMIN_NAMES) can log results.
+  const logBtn=document.getElementById('log-form-toggle');
+  if(logBtn) logBtn.style.display=canLogResults()?'inline-flex':'none';
+  if(!canLogResults()){ const f=document.getElementById('log-form'); if(f) f.classList.remove('open'); }
+
   // Hero leaderboard cards
   const hero=document.getElementById('atr-hero');
   hero.innerHTML = lb.slice(0,3).map((p,i)=>`
@@ -2001,6 +2288,7 @@ function toggleLogForm(){
 }
 
 async function logResult(){
+  if(!canLogResults()){ showToast('Only the admin can log results.'); return; }
   const contest=document.getElementById('log-contest').value.trim();
   const winner=document.getElementById('log-winner').value.trim();
   const year=parseInt(document.getElementById('log-year').value)||new Date().getFullYear();
@@ -2025,6 +2313,7 @@ async function autoLogDraftWinner(winnerName, contestName){
 }
 
 async function markWinner(){
+  if(!canLogResults()){ showToast('Only the admin can log the winner.'); return; }
   const select = document.getElementById('winner-override-select');
   const winner = select ? select.value : null;
   if(!winner){ showToast('Select a winner first.'); return; }
@@ -2095,7 +2384,9 @@ const MASTERS_2026 = {
 };
 
 // ── CLOUDFLARE WORKER PROXY ──────────────────────────
-const WORKER_URL = 'https://golf-scores-proxy.l-kacer33.workers.dev';
+// Live-score API — the Netlify function in this repo (replaces the old Cloudflare Worker).
+// Supports ?event=<id> (golf passthrough) and ?type=playoffs|standings|golf.
+const WORKER_URL = '/.netlify/functions/update-scores';
 
 let mastersScoreCache = {};
 let mastersLastFetch = null;
@@ -2566,8 +2857,10 @@ async function enterViewOnly() {
   renderPageNav();
   listenMastersScores();
   listenGlobalPlayoffScores();
+  listenSeasonRecords();
   // Load and render finalized drafts explicitly
   await loadGlobalPlayoffScores();
+  await loadSeasonRecords();
   renderScoreboard();
   renderHardcodedDrafts();
   await renderFinalizedDrafts();
@@ -2577,56 +2870,112 @@ async function enterViewOnly() {
 // ══════════════════════════════════════════════════════
 // UPCOMING EVENTS
 // ══════════════════════════════════════════════════════
+// Big draftable sporting events — remainder of 2026 through 2027.
+// renderUpcoming() hides events that finished more than 45 days ago.
 const UPCOMING_EVENTS = [
   {
-    name: 'FIFA World Cup 2026',
-    sport: 'Soccer', emoji: '⚽',
-    venue: 'Multiple Stadiums', location: 'USA, Canada & Mexico',
-    startDate: new Date('2026-06-11'),
-    endDate: new Date('2026-07-19'),
-    color: '#e8a020',
-    colorBg: 'rgba(232,160,32,.08)',
-    note: 'First 48-team World Cup'
-  },
-  {
-    name: 'MLB Playoffs 2026',
-    sport: 'MLB', emoji: '⚾',
-    venue: 'MLB Ballparks', location: 'USA & Canada',
-    startDate: new Date('2026-09-29'),
-    endDate: new Date('2026-10-31'),
-    color: '#3c8fe8',
-    colorBg: 'rgba(60,143,232,.08)',
-    note: 'Wild Card → World Series'
-  },
-  {
-    name: 'The Open Championship 2026',
-    sport: 'PGA', emoji: '⛳',
-    venue: 'Royal Birkdale', location: 'Southport, England',
-    startDate: new Date('2026-07-16'),
-    endDate: new Date('2026-07-19'),
-    color: 'var(--pga)',
-    colorBg: 'rgba(42,158,79,.08)',
-    note: 'The Claret Jug · 154th Open'
+    name: 'NFL Win Totals 2026',
+    sport: 'NFL', emoji: '🏈',
+    venue: 'NFL Stadiums', location: 'USA',
+    startDate: new Date('2026-09-10'), endDate: new Date('2027-01-04'),
+    color: 'var(--nfl)', colorBg: 'rgba(31,62,122,.08)',
+    note: '18-week regular season — draft teams, count the wins'
   },
   {
     name: 'College Football 2026',
-    sport: 'NCAAF', emoji: '🏈',
+    sport: 'CFB', emoji: '🏈',
     venue: 'Campus Sites & Bowls', location: 'USA',
-    startDate: new Date('2026-08-29'),
-    endDate: new Date('2027-01-25'),
-    color: '#a02c3a',
-    colorBg: 'rgba(160,44,58,.08)',
-    note: 'Week 1 → CFP Title (Allegiant Stadium)'
+    startDate: new Date('2026-08-23'), endDate: new Date('2027-01-25'),
+    color: 'var(--cfb)', colorBg: 'rgba(160,44,58,.08)',
+    note: 'Regular season → 12-team CFP → Title in Las Vegas'
   },
   {
-    name: 'NFL Season 2026',
+    name: 'MLB Postseason 2026',
+    sport: 'MLB', emoji: '⚾',
+    venue: 'MLB Ballparks', location: 'USA & Canada',
+    startDate: new Date('2026-09-29'), endDate: new Date('2026-11-01'),
+    color: 'var(--mlb)', colorBg: 'rgba(60,143,232,.08)',
+    note: 'Wild Card → World Series (Oct 23–31)'
+  },
+  {
+    name: 'NBA Season 2026-27',
+    sport: 'NBA', emoji: '🏀',
+    venue: 'NBA Arenas', location: 'USA & Canada',
+    startDate: new Date('2026-10-21'), endDate: new Date('2027-06-21'),
+    color: 'var(--nba)', colorBg: 'rgba(201,70,61,.08)',
+    note: 'Tip-off → NBA Finals (June 2027)'
+  },
+  {
+    name: 'NHL Season 2026-27',
+    sport: 'NHL', emoji: '🏒',
+    venue: 'NHL Arenas', location: 'USA & Canada',
+    startDate: new Date('2026-10-07'), endDate: new Date('2027-06-20'),
+    color: 'var(--nhl)', colorBg: 'rgba(26,106,191,.08)',
+    note: 'Puck drop → Stanley Cup Final (June 2027)'
+  },
+  {
+    name: 'CFP National Championship',
+    sport: 'CFB', emoji: '🏆',
+    venue: 'Allegiant Stadium', location: 'Las Vegas, NV',
+    startDate: new Date('2027-01-25'), endDate: new Date('2027-01-25'),
+    color: 'var(--cfb)', colorBg: 'rgba(160,44,58,.08)',
+    note: '2026 season champion crowned'
+  },
+  {
+    name: 'Super Bowl LXI',
+    sport: 'NFL', emoji: '🏈',
+    venue: 'SoFi Stadium', location: 'Inglewood, CA',
+    startDate: new Date('2027-02-14'), endDate: new Date('2027-02-14'),
+    color: 'var(--nfl)', colorBg: 'rgba(31,62,122,.08)',
+    note: 'NFL championship'
+  },
+  {
+    name: 'NCAA March Madness 2027',
+    sport: 'CBB', emoji: '🎓',
+    venue: 'Ford Field (Final Four)', location: 'Detroit, MI',
+    startDate: new Date('2027-03-17'), endDate: new Date('2027-04-05'),
+    color: 'var(--cbb)', colorBg: 'rgba(232,124,42,.08)',
+    note: 'Selection Sunday → Final Four (Apr 3 & 5)'
+  },
+  {
+    name: 'The Masters 2027',
+    sport: 'PGA', emoji: '⛳',
+    venue: 'Augusta National', location: 'Augusta, GA',
+    startDate: new Date('2027-04-08'), endDate: new Date('2027-04-11'),
+    color: 'var(--pga)', colorBg: 'rgba(42,158,79,.08)',
+    note: 'First major of 2027'
+  },
+  {
+    name: 'PGA Championship 2027',
+    sport: 'PGA', emoji: '⛳',
+    venue: 'Fields Ranch East', location: 'Frisco, TX',
+    startDate: new Date('2027-05-20'), endDate: new Date('2027-05-23'),
+    color: 'var(--pga)', colorBg: 'rgba(42,158,79,.08)',
+    note: "Year's second major"
+  },
+  {
+    name: 'U.S. Open 2027 (Golf)',
+    sport: 'PGA', emoji: '⛳',
+    venue: 'Pebble Beach', location: 'Pebble Beach, CA',
+    startDate: new Date('2027-06-17'), endDate: new Date('2027-06-20'),
+    color: 'var(--pga)', colorBg: 'rgba(42,158,79,.08)',
+    note: 'Third major'
+  },
+  {
+    name: 'The Open Championship 2027',
+    sport: 'PGA', emoji: '⛳',
+    venue: 'The Old Course, St Andrews', location: 'Fife, Scotland',
+    startDate: new Date('2027-07-15'), endDate: new Date('2027-07-18'),
+    color: 'var(--pga)', colorBg: 'rgba(42,158,79,.08)',
+    note: '156th Open — the Claret Jug'
+  },
+  {
+    name: 'NFL Win Totals 2027',
     sport: 'NFL', emoji: '🏈',
     venue: 'NFL Stadiums', location: 'USA',
-    startDate: new Date('2026-09-10'),
-    endDate: new Date('2027-02-14'),
-    color: 'var(--nfl)',
-    colorBg: 'rgba(31,62,122,.08)',
-    note: 'Kickoff → Super Bowl LXI (SoFi Stadium)'
+    startDate: new Date('2027-09-09'), endDate: new Date('2028-01-03'),
+    color: 'var(--nfl)', colorBg: 'rgba(31,62,122,.08)',
+    note: 'Next season — draft teams, count the wins'
   }
 ];
 
@@ -2656,8 +3005,12 @@ function renderUpcoming() {
   const el = document.getElementById('upcoming-grid');
   if (!el) return;
 
+  // Hide events that wrapped up more than 45 days ago.
+  const cutoff = new Date(Date.now() - 45 * 864e5);
+  const visible = UPCOMING_EVENTS.filter(ev => ev.endDate >= cutoff);
+
   // Sort: live first, then by start date
-  const sorted = [...UPCOMING_EVENTS].sort((a, b) => {
+  const sorted = [...visible].sort((a, b) => {
     const sa = getEventStatus(a), sb = getEventStatus(b);
     if (sa === 'live' && sb !== 'live') return -1;
     if (sb === 'live' && sa !== 'live') return 1;
@@ -3450,6 +3803,7 @@ async function finalizeDraft() {
     id: ME.roomCode,
     draftName: ROOM.draftName || 'Draft',
     leagues: ROOM.leagues || [],
+    scoringMode: ROOM.scoringMode || 'playoff',
     selectedMajorId: ROOM.selectedMajorId || null,
     participants: Object.values(ROOM.participants || {}).map(p => p.name),
     picks: picks,
@@ -3514,6 +3868,53 @@ const fdExpanded = {};
 // Scoreboard rendering is suppressed. Flip to true to bring the cards back.
 const SHOW_FINALIZED_DRAFTS = false;
 
+// Finalized-draft card for scoringMode === 'record' (regular season wins).
+function renderFinalizedRecordCard(draft, picks, participants, isExpanded){
+  const byOwner={}; participants.forEach(p=>byOwner[p]=[]);
+  picks.forEach(pk=>{ if(pk&&pk.team) byOwner[pk.participant]?.push(pk); });
+  const ownerData=participants.map(p=>{
+    const teams=byOwner[p]||[]; let wins=0;
+    teams.forEach(pk=>{ const r=getRecord(pk.team?.id,pk.league); if(r) wins+=(r.w||0); });
+    return {participant:p,teams,wins};
+  }).sort((a,b)=>b.wins-a.wins);
+  const leagueNames=(draft.leagues||[]).map(l=>LNAME[l]).join(' · ');
+  const date=draft.finalizedAt?new Date(draft.finalizedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+  return `<div class="fd-card" id="fd-${draft.id}">
+    <div class="fd-card-header" onclick="toggleFdCard('${draft.id}')">
+      <div>
+        <div class="fd-card-title">${draft.draftName||'Draft'}</div>
+        <div class="fd-card-meta">${leagueNames} · Regular Season Wins${date?' · Finalized '+date:''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="${draft.status==='active'?'fd-status-active':'fd-status-done'}">${draft.status==='active'?'Active':'Complete'}</span>
+        ${(ME.isHost||isViewOnly===false)?`
+          <button class="btn btn-ghost btn-sm" style="color:var(--success);border-color:rgba(60,232,154,.3);font-size:11px" onclick="event.stopPropagation();markDraftComplete('${draft.id}')">✓ Done</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:rgba(255,92,92,.3);font-size:11px" onclick="event.stopPropagation();closeFinalizedDraft('${draft.id}')">✕ Remove</button>`:''}
+        <span style="color:var(--muted);font-size:14px">${isExpanded?'▲':'▼'}</span>
+      </div>
+    </div>
+    <div id="fd-body-${draft.id}" style="display:${isExpanded?'block':'none'}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:14px 18px">
+        ${ownerData.map((o,rank)=>{
+          const rankEmoji=['🏆','🥈','🥉'][rank]||'';
+          return `<div style="background:var(--surface2);border:1px solid ${rank===0?'rgba(232,255,60,.3)':'var(--border)'};border-radius:10px;padding:12px 14px">
+            <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:4px">${rankEmoji} ${o.participant}</div>
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:${o.wins>0?'var(--accent)':'var(--muted)'}">${o.wins}<span style="font-size:11px;font-family:DM Sans,sans-serif;color:var(--muted);margin-left:3px">wins</span></div>
+            <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:3px">
+              ${o.teams.map(pk=>{
+                if(!pk||!pk.team) return '';
+                const r=getRecord(pk.team.id,pk.league);
+                const label=(pk.team.city?pk.team.city+' ':'')+pk.team.name;
+                return `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border);display:flex;gap:3px;align-items:center">${label}<span style="color:${r&&r.w>0?'var(--success)':'var(--muted)'};font-weight:700">${r?(r.w||0)+'W':'—'}</span></span>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
 async function renderFinalizedDrafts() {
   const el = document.getElementById('sb-finalized-drafts');
   if (!el) return;
@@ -3570,6 +3971,7 @@ async function renderFinalizedDrafts() {
       const isExpanded = fdExpanded[draft.id] !== false; // default expanded
       const picks = toArray(draft.picks);
       const participants = draft.participants || [];
+      if (draft.scoringMode === 'record') return renderFinalizedRecordCard(draft, picks, participants, isExpanded);
       const hasSports = (draft.leagues || []).some(l => l !== 'pga');
       const hasPGA = (draft.leagues || []).includes('pga');
       const purePGA = hasPGA && !hasSports;
@@ -3721,6 +4123,7 @@ setInterval(()=>{
       enterApp(s.roomCode);
       listenMastersScores();
       listenGlobalPlayoffScores();
+      listenSeasonRecords();
       return;
     }
   }

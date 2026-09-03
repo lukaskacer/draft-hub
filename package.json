@@ -1,0 +1,21 @@
+{
+  "name": "draft-hub",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Multi-league fantasy sports draft app — real-time drafting, live scoring, all-time results.",
+  "type": "module",
+  "scripts": {
+    "dev": "netlify dev",
+    "scores": "node scripts/run-scores-local.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.2",
+    "netlify-cli": "^17.37.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

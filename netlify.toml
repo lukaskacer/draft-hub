@@ -1,0 +1,21 @@
+# Draft Hub — Netlify config
+# Static site (index.html at repo root) + serverless functions for live scores.
+
+[build]
+  publish = "."
+  command = ""
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Scheduled run: pull ESPN standings / playoff / golf data into Firebase.
+# Every 15 minutes — ESPN data doesn't update faster than that and this
+# keeps us well inside the free tier.
+[functions."update-scores"]
+  schedule = "*/15 * * * *"
+
+[[redirects]]
+  from = "/api/scores"
+  to = "/.netlify/functions/update-scores"
+  status = 200

@@ -1,0 +1,15 @@
+{
+  "//": "Firebase Realtime Database rules. Apply in the Firebase console (Realtime Database → Rules) or with `firebase deploy --only database`. The app has no user auth — rooms are protected only by the 6-char code — so these rules stay permissive for game data. The score paths are locked to the Netlify service account so clients cannot tamper with live scores.",
+  "rules": {
+    "rooms":            { ".read": true, ".write": true },
+    "finalizedDrafts":  { ".read": true, ".write": true },
+    "alltime":          { ".read": true, ".write": true },
+    "archivedEvents":   { ".read": true, ".write": true },
+    "playoffScores":    { ".read": true, ".write": true },
+    "masters2026scores":{ ".read": true, ".write": true },
+
+    "seasonRecords":    { ".read": true, ".write": "auth != null && auth.token.firebase.sign_in_provider == 'service_account'" },
+    "golfScores":       { ".read": true, ".write": "auth != null && auth.token.firebase.sign_in_provider == 'service_account'" },
+    "scoresMeta":       { ".read": true, ".write": "auth != null && auth.token.firebase.sign_in_provider == 'service_account'" }
+  }
+}
