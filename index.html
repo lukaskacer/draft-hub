@@ -1948,6 +1948,13 @@ function renderScoreboard(){
   const picks=toArray(ROOM.picks);
   const participants=Object.values(ROOM.participants||{}).map(p=>p.name);
   if(!participants.length||!picks.length){
+    // View-only / no active room: the finalized-draft cards below are the scoreboard.
+    if(isViewOnly || !ME.roomCode){
+      if(el){ el.innerHTML=''; el.style.display='none'; }
+      if(tickerWrap) tickerWrap.style.display='none';
+      const sbS=document.getElementById('sb-status-bar'); if(sbS) sbS.style.display='none';
+      return;
+    }
     el.innerHTML='<div class="empty" style="grid-column:1/-1">Complete the draft to see scores.</div>';return;
   }
 
@@ -3863,10 +3870,10 @@ async function restoreDraft(draftId) {
 // Track which finalized draft cards are expanded
 const fdExpanded = {};
 
-// Set to false to hide all finalized draft cards on the Scoreboard tab.
-// Data stays in Firebase and the admin/edit tools still work — only the
-// Scoreboard rendering is suppressed. Flip to true to bring the cards back.
-const SHOW_FINALIZED_DRAFTS = false;
+// Finalized drafts are shown on the Scoreboard tab (newest first) so a completed
+// draft keeps tracking its season. Use each card's "✓ Done" button to retire an
+// event once its season is over — that keeps it in All Time and drops it here.
+const SHOW_FINALIZED_DRAFTS = true;
 
 // Finalized-draft card for scoringMode === 'record' (regular season wins).
 function renderFinalizedRecordCard(draft, picks, participants, isExpanded){
@@ -3919,8 +3926,9 @@ async function renderFinalizedDrafts() {
   const el = document.getElementById('sb-finalized-drafts');
   if (!el) return;
 
-  // Always fresh-load both playoff scores AND PGA scores from Firebase
+  // Always fresh-load playoff scores, season records AND PGA scores from Firebase
   await loadGlobalPlayoffScores();
+  await loadSeasonRecords();
 
   // Fresh-load PGA/golf scores into liveScores
   try {
