@@ -8,6 +8,7 @@
 // Firebase paths written:
 //   seasonRecords/{league}/{teamId}  ->  { w, l, t, updatedAt }
 //   golfScores/{majorId}/{golferId}  ->  { toPar, position, rounds, total, cut }
+//   playoffScores/{teamId}           ->  { wins:[...], eliminated, league }  (bracket leagues)
 //   scoresMeta/lastRun               ->  { at, summary }
 //
 // Env: FIREBASE_SERVICE_ACCOUNT (JSON string), FIREBASE_DB_URL,
@@ -20,7 +21,11 @@ import {
   getStandings,
   getGolfLeaderboard,
   findGolfMajor,
+  getPlayoffBracket,
+  isLeagueInPlayoffWindow,
 } from './lib/espn.mjs';
+
+const PLAYOFF_LEAGUES = ['mlb', 'nba', 'nhl', 'nfl', 'cfb', 'cbb'];
 
 // ── Firebase ────────────────────────────────────────────────────────────────
 let dbInstance = null;
@@ -96,9 +101,49 @@ async function updateGolf(forceEventId) {
   return { golf: summary };
 }
 
+// Writes each team's bracket state with targeted per-field updates (never a bare
+// `set` of the whole node) so this coexists cleanly with:
+//  - a manual correction made via the Edit Scores / Edit Playoff Results panel
+//  - an earlier round's result that's no longer in this run's scoreboard window
+async function writeBracket(bracket) {
+  for (const [teamId, data] of Object.entries(bracket)) {
+    const updates = { league: data.league };
+    data.wins.forEach((w, i) => { if (w) updates[`wins/${i}`] = 1; });
+    if (data.eliminated) updates.eliminated = true;
+    await db().ref(`playoffScores/${teamId}`).update(updates);
+  }
+}
+
+async function updatePlayoffs(only) {
+  const summary = {};
+  const unmatchedAll = {};
+  const leagues = only ? [only] : PLAYOFF_LEAGUES;
+  for (const league of leagues) {
+    if (!only && !isLeagueInPlayoffWindow(league)) continue;
+    try {
+      const { bracket, unmatched } = await getPlayoffBracket(league);
+      const ids = Object.keys(bracket);
+      if (!ids.length) { summary[league] = 'no decided games yet'; continue; }
+      await writeBracket(bracket);
+      summary[league] = ids.length;
+      if (unmatched.length) unmatchedAll[league] = unmatched;
+    } catch (err) {
+      summary[league] = `error: ${err.message}`;
+    }
+  }
+  if (Object.keys(unmatchedAll).length) {
+    console.warn('[update-scores] unmatched playoff teams:', JSON.stringify(unmatchedAll));
+  }
+  return { playoffs: summary };
+}
+
 async function runAll(opts = {}) {
   const started = Date.now();
-  const result = { ...(await updateStandings(opts.league)), ...(await updateGolf(opts.event)) };
+  const result = {
+    ...(await updateStandings(opts.league)),
+    ...(await updateGolf(opts.event)),
+    ...(await updatePlayoffs(opts.playoffLeague)),
+  };
   const meta = { at: new Date().toISOString(), ms: Date.now() - started, summary: result };
   try { await db().ref('scoresMeta/lastRun').set(meta); } catch { /* non-fatal */ }
   return meta;
@@ -127,9 +172,16 @@ export default async (req) => {
       return json({ leaderboard, state });
     }
     if (params.get('type') === 'playoffs') {
-      // Playoff-series aggregation is not yet reproduced here; the client falls
-      // back to Firebase manual entry (Edit Playoff Results) when this is empty.
-      return json({ seriesResults: {}, note: 'manual entry' });
+      // Real bracket aggregation (series wins + single-elimination results from ESPN).
+      // The client reads playoffScores from Firebase directly now, but this still
+      // returns the computed bracket for manual triggering/debugging.
+      const league = params.get('league');
+      if (league) {
+        const { bracket, unmatched } = await getPlayoffBracket(league);
+        await writeBracket(bracket);
+        return json({ seriesResults: bracket, unmatched });
+      }
+      return json(await updatePlayoffs());
     }
     if (params.get('type') === 'golf') {
       return json(await runAll({ event: params.get('event') || undefined }));

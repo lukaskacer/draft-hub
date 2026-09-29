@@ -14,15 +14,17 @@ draft live turn-by-turn, and watch the scoreboard update itself.
 | Piece | What it does |
 |---|---|
 | `index.html` | The entire app — lobby, draft room, scoring, scoreboard, all-time results, upcoming events. Talks to Firebase directly. |
-| `netlify/functions/update-scores.mjs` | Runs every 15 min (and on demand). Pulls ESPN standings + the current golf major, writes them into Firebase. Clients listen and re-render. |
-| `netlify/functions/lib/espn.mjs` | ESPN endpoints, team-id maps, and `findGolfMajor()` (auto-detects the active major — no hardcoded event ids). |
+| `netlify/functions/update-scores.mjs` | Runs every 15 min (and on demand). Pulls ESPN standings, the current golf major, and every in-window playoff bracket, and writes them into Firebase. Clients listen and re-render. |
+| `netlify/functions/lib/espn.mjs` | ESPN endpoints, team-id maps, `findGolfMajor()` (auto-detects the active major), and `getPlayoffBracket()` (auto-detects each league's playoff round from game headlines). |
 | Firebase Realtime DB (`draft-hub-bece4`) | Rooms, drafts, finalized drafts, all-time results, and the live score caches. |
 
 ### Scoring modes (set by the host on the Setup tab)
 
 - **Playoff Bracket** — each playoff round a team wins is worth double the last
   (base points per league on the Scoring tab). Golf = total strokes. World Cup =
-  group result + doubling bracket.
+  group result + doubling bracket. Round wins for NFL/CFB/CBB (single-elimination)
+  and NBA/NHL/MLB (best-of-series) are pulled from ESPN automatically during each
+  league's postseason window; World Cup stays manual (next in season in 2030).
 - **Regular Season Wins** — your score is the **total regular-season wins** of
   every team you drafted. Standings come from ESPN automatically (NFL, CFB, NBA,
   MLB). Use this for win-totals drafts.
@@ -87,12 +89,19 @@ scores; everything else stays open (rooms are protected only by their code).
   `golfScores/<major><year>` (e.g. `masters2027`). The only edit needed is
   keeping the `MAJORS` list in `index.html` current so a host can pick the
   right tournament when creating a PGA draft — `espnId` there is unused now.
+- **Playoff round mapping** — `PLAYOFF_ROUNDS` in `espn.mjs` matches each league's
+  game headlines (e.g. "NBA Finals", "AFC Championship", "1st Round") to a round
+  index. Verified against real 2025-26 postseason data for all six leagues before
+  shipping — if ESPN ever renames a round, add/adjust a pattern there.
+- **Playoff-team pools** — NHL and CBB (`TEAMS.nhl`/`TEAMS.cbb` in `index.html`
+  plus the matching `TEAM_ID_MAP.nhl`/`.cbb` in `espn.mjs`) are a snapshot of one
+  year's actual bracket and need refreshing before the next postseason, same as
+  NBA. NFL/CFB/MLB use their full league so this doesn't apply to them.
 - **Who can log All-Time Results** — `ADMIN_NAMES` in `index.html`
   (name match, case-insensitive).
-- **Show finalized draft cards on the Scoreboard** — flip
-  `SHOW_FINALIZED_DRAFTS` to `true` in `index.html`. Currently off; during a
-  season keep the room un-finalized so its live grid stays visible, and
-  finalize only when it's over.
+- **Finalized draft cards on the Scoreboard** — `SHOW_FINALIZED_DRAFTS` in
+  `index.html` (currently `true`). During a season keep the room un-finalized
+  so its live grid stays visible; finalize once it's over.
 
 ---
 
@@ -100,7 +109,11 @@ scores; everything else stays open (rooms are protected only by their code).
 
 - **Regular-season win totals** (NFL, CFB, NBA, MLB) — fully automatic, every season.
 - **Golf majors** — fully automatic; the function detects the live major itself.
-- **Playoff series results** (NBA/NHL/MLB/CFB brackets, March Madness, World Cup)
-  still use the manual **Edit Playoff Results** panel on the Scoreboard. The
-  `?type=playoffs` route returns empty on purpose until that aggregation is built.
+- **Playoff brackets** (NBA/NHL/MLB/CFB/CBB) — fully automatic during each league's
+  postseason window (`isLeagueInPlayoffWindow` in `espn.mjs`): series wins for
+  MLB/NBA/NHL read straight from ESPN's series data, single-elimination rounds
+  (NFL/CFB/CBB) from each game's winner. The manual **Edit Playoff Results**
+  panel still exists as an override for when ESPN lags or gets something wrong.
+- **World Cup** — manual only (group stage + knockout bracket); not worth
+  automating until the next Cup in 2030.
 - **Automated texts** — intentionally not built; score updates are sent by hand.
